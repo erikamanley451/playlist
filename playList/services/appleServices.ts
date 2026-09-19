@@ -1,4 +1,4 @@
-const APPLE_MUSIC_DEVELOPER_TOKEN = 'eyJhbGciOiJFUzI1NiIsImtpZCI6Ikg2UDVLN1RGNFAiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJCREhVQkpOVTlDIiwiaWF0IjoxNzQ1MjgzNDc0LCJleHAiOjE3NTA1Mzk0NzR9.4vx5venrU2HIsxTS5GoMksfVckabBQVnSgyXVLy49QgwWnNx-3ezc3oUxHsjkX2BWnh-iN1KuFGFXyqcs0hcQg';
+const APPLE_MUSIC_DEVELOPER_TOKEN = '';
 const APPLE_MUSIC_API_URL = 'https://api.music.apple.com/v1/catalog/us'; // 'us' can be replaced with desired storefront
 
 //recommendations requires user subscription to apple music
