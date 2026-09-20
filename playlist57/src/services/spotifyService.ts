@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
 
-const SPOTIFY_CLIENT_ID = '';
-const SPOTIFY_CLIENT_SECRET = '';
+const SPOTIFY_CLIENT_ID = "";
+const SPOTIFY_CLIENT_SECRET = "";
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 
 let cachedToken: string | null = null;

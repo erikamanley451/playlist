@@ -1,4 +1,5 @@
-const APPLE_MUSIC_DEVELOPER_TOKEN = '';
+const APPLE_MUSIC_DEVELOPER_TOKEN =
+  process.env.EXPO_PUBLIC_APPLE_MUSIC_DEVELOPER_TOKEN;
 const APPLE_MUSIC_API_URL = 'https://api.music.apple.com/v1/catalog/us'; // 'us' can be replaced with desired storefront
 
 //recommendations requires user subscription to apple music

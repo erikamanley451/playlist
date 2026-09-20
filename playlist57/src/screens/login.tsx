@@ -23,41 +23,54 @@ const Login = () => {
   const [error, setError] = useState("");
 
   const onLogin = async () => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+  try {
+    console.log("1. Starting Firebase login...");
 
-      const user = userCredential.user;
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      email,
+      password
+    );
 
-      console.log("Login successful:", user.uid);
+    const user = userCredential.user;
 
-      // Fetch user profile from Firestore
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
+    console.log("2. Login successful:", user.uid);
 
-      if (userSnap.exists()) {
-        const userData = userSnap.data();
+    // Fetch user profile from Firestore
+    console.log("3. Fetching user profile from Firestore...");
 
-        console.log("User Data:", userData);
+    const userRef = doc(db, "users", user.uid);
+    const userSnap = await getDoc(userRef);
 
-        if (userData.fullName) {
-          await AsyncStorage.setItem("fullName", userData.fullName);
-        } else {
-          console.warn("userData.fullName is undefined");
-        }
+    console.log("4. Firestore request completed.");
+
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+
+      console.log("User Data:", userData);
+
+      if (userData.fullName) {
+        await AsyncStorage.setItem("fullName", userData.fullName);
+      } else {
+        console.warn("userData.fullName is undefined");
       }
-
-      setError("");
-
-      // Navigate to the main app
-      navigation.navigate("AppTabs" as never);
-    } catch (error: any) {
-      setError("Login failed: " + error.message);
+    } else {
+      console.log("No Firestore profile found for this user.");
     }
-  };
+
+    setError("");
+
+    console.log("5. Navigating to AppTabs...");
+    navigation.navigate("AppTabs" as never);
+
+  } catch (error: any) {
+    console.error("LOGIN ERROR:", error);
+    console.error("ERROR CODE:", error?.code);
+    console.error("ERROR MESSAGE:", error?.message);
+
+    setError("Login failed: " + error.message);
+  }
+};
 
   const onSignUp = () => {
     navigation.navigate("Signup" as never);
