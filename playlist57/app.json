@@ -4,43 +4,51 @@
     "slug": "playList",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./src/assets/images/appicon1.png",
     "scheme": "playlist",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.playList"
+      "bundleIdentifier": "com.anonymous.playList",
+      "icon": "./src/assets/images/appicon1.png"
     },
     "android": {
+      "icon": "./src/assets/images/appicon1.png",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./src/assets/images/adaptive-icon.png",
+        "backgroundColor": "#000000"
       },
       "predictiveBackGestureEnabled": false
     },
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/headphone.png"
+      "favicon": "./src/assets/images/headphone.png"
     },
     "plugins": [
-      
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
-      "expo-asset",
-      "expo-audio",
-      "expo-video"
-    ],
+  [
+    "expo-build-properties",
+    {
+      "ios": {
+        "enableSceneSupport": true
+      }
+    }
+  ],
+  [
+    "expo-splash-screen",
+    {
+      "image": "./src/assets/images/appicon1.png",
+      "imageWidth": 240,
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    }
+  ],
+  "expo-asset",
+  "expo-audio",
+  "expo-video"
+],
     "experiments": {
-      
       "reactCompiler": true
     }
   }
