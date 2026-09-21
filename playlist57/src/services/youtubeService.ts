@@ -32,7 +32,7 @@ async function fetchYouTube(endpoint: string): Promise<any> {
 // Search YouTube videos
 export async function fetchVideos(
   query: string,
-  maxResults: number = 20,
+  maxResults: number = 50,
   pageToken: string = ""
 ) {
   const encodedQuery = encodeURIComponent(query);
@@ -58,7 +58,7 @@ export async function fetchVideos(
 
 // Get general/popular YouTube videos
 export async function fetchPopularVideos(
-  maxResults: number = 20,
+  maxResults: number = 50,
   pageToken: string = ""
 ) {
   const url =

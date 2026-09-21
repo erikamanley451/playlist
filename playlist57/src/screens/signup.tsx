@@ -1,6 +1,10 @@
 import { useNavigation } from "@react-navigation/native";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { doc, serverTimestamp, setDoc } from "firebase/firestore";
+import {
+  doc,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 import { useState } from "react";
 import {
   Image,
@@ -19,67 +23,128 @@ const SignUp = () => {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] =
+    useState("");
   const [error, setError] = useState("");
-  const [isSigningUp, setIsSigningUp] = useState(false);
+  const [isSigningUp, setIsSigningUp] =
+    useState(false);
 
   const onSignUp = async () => {
+    // Prevent multiple signup requests.
+    if (isSigningUp) {
+      return;
+    }
+
     const cleanName = fullName.trim();
     const cleanEmail = email.trim().toLowerCase();
 
     setError("");
 
-    if (!cleanName || !cleanEmail || !password || !confirmPassword) {
-      setError("All fields are required");
+    if (
+      !cleanName ||
+      !cleanEmail ||
+      !password ||
+      !confirmPassword
+    ) {
+      setError("All fields are required.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError("Passwords do not match.");
       return;
     }
 
     if (password.length < 6) {
-      setError("Password must be at least 6 characters");
+      setError(
+        "Password must be at least 6 characters."
+      );
       return;
     }
 
     try {
       setIsSigningUp(true);
 
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        cleanEmail,
-        password
-      );
+      /*
+       * Firebase creates the account and automatically
+       * signs the new user in.
+       */
+      const userCredential =
+        await createUserWithEmailAndPassword(
+          auth,
+          cleanEmail,
+          password
+        );
 
       const user = userCredential.user;
 
-      await setDoc(doc(db, "users", user.uid), {
+      /*
+       * Save the profile in the background.
+       * Do not await this because an offline Firestore
+       * connection could prevent navigation.
+       */
+      void setDoc(doc(db, "users", user.uid), {
         fullName: cleanName,
         email: cleanEmail,
         createdAt: serverTimestamp(),
+      }).catch((firestoreError: any) => {
+        console.error(
+          "Account created, but profile did not synchronize:",
+          firestoreError.code,
+          firestoreError.message
+        );
       });
 
-      navigation.navigate("AppTabs" as never);
+      /*
+       * The account is created and the user is signed in.
+       * Reset navigation so they cannot go back to signup.
+       */
+      (navigation as any).reset({
+        index: 0,
+        routes: [{ name: "AppTabs" }],
+      });
     } catch (error: any) {
-      console.error("Signup error:", error.code, error.message);
+      console.error(
+        "Signup error:",
+        error.code,
+        error.message
+      );
 
       switch (error.code) {
         case "auth/email-already-in-use":
-          setError("An account with this email already exists.");
+          setError(
+            "An account with this email already exists."
+          );
           break;
+
         case "auth/invalid-email":
-          setError("Please enter a valid email address.");
+          setError(
+            "Please enter a valid email address."
+          );
           break;
+
         case "auth/weak-password":
-          setError("Please choose a stronger password.");
+          setError(
+            "Please choose a stronger password."
+          );
           break;
+
         case "auth/network-request-failed":
-          setError("Unable to connect. Please check your internet connection.");
+          setError(
+            "Unable to connect. Please check your internet connection."
+          );
           break;
+
+        case "auth/too-many-requests":
+          setError(
+            "Too many attempts. Please try again later."
+          );
+          break;
+
         default:
-          setError(error.message ?? "Unable to create your account.");
+          setError(
+            "Unable to create your account. Please try again."
+          );
       }
     } finally {
       setIsSigningUp(false);
@@ -87,6 +152,10 @@ const SignUp = () => {
   };
 
   const onLogin = () => {
+    if (isSigningUp) {
+      return;
+    }
+
     navigation.navigate("Login" as never);
   };
 
@@ -94,7 +163,9 @@ const SignUp = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Image
-          source={require("../assets/images/headphones2.gif")}
+          source={require(
+            "../assets/images/headphones2.gif"
+          )}
           style={styles.logoImage}
         />
 
@@ -109,6 +180,7 @@ const SignUp = () => {
           value={fullName}
           autoCapitalize="words"
           autoComplete="name"
+          editable={!isSigningUp}
         />
 
         <TextInput
@@ -120,6 +192,7 @@ const SignUp = () => {
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="email"
+          editable={!isSigningUp}
         />
 
         <TextInput
@@ -130,6 +203,7 @@ const SignUp = () => {
           secureTextEntry
           autoCapitalize="none"
           autoComplete="new-password"
+          editable={!isSigningUp}
         />
 
         <TextInput
@@ -140,22 +214,42 @@ const SignUp = () => {
           secureTextEntry
           autoCapitalize="none"
           autoComplete="new-password"
+          editable={!isSigningUp}
           onSubmitEditing={onSignUp}
         />
 
         {error !== "" && (
-          <Text style={{ color: "red", marginBottom: 10 }}>{error}</Text>
+          <Text
+            style={{
+              color: "red",
+              marginBottom: 10,
+            }}
+          >
+            {error}
+          </Text>
         )}
 
         <MyButton
-          title={isSigningUp ? "SIGNING UP..." : "SIGN UP"}
+          title={
+            isSigningUp
+              ? "CREATING ACCOUNT..."
+              : "SIGN UP"
+          }
           onPress={onSignUp}
           disabled={isSigningUp}
         />
       </View>
 
-      <TouchableOpacity onPress={onLogin}>
-        <Text style={styles.signUpText}>
+      <TouchableOpacity
+        onPress={onLogin}
+        disabled={isSigningUp}
+      >
+        <Text
+          style={[
+            styles.signUpText,
+            isSigningUp && { opacity: 0.5 },
+          ]}
+        >
           Already Have an Account? Login
         </Text>
       </TouchableOpacity>
