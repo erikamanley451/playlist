@@ -1,7 +1,6 @@
-
 import { useNavigation } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -15,174 +14,262 @@ import {
 } from "react-native";
 import { auth, db } from "../../services/firebase";
 
+type UserProfile = {
+  fullName: string;
+  email: string;
+};
+
 const UserAccountScreen = () => {
   const navigation = useNavigation();
 
-  const [userData, setUserData] = useState<any>(null);
-  const [editing, setEditing] = useState(false);
+  const [userData, setUserData] =
+    useState<UserProfile | null>(null);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<UserProfile>({
     fullName: "",
     email: "",
-    phone: "",
   });
+
+  const [editing, setEditing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchUserProfile = async () => {
       const user = auth.currentUser;
 
-      if (user) {
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      try {
         const userRef = doc(db, "users", user.uid);
-        const docSnap = await getDoc(userRef);
+        const documentSnapshot = await getDoc(userRef);
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
+        if (documentSnapshot.exists()) {
+          const data = documentSnapshot.data();
 
-          setUserData(data);
-
-          setFormData({
+          const profileData: UserProfile = {
             fullName: data.fullName || "",
-            email: data.email || "",
-            phone: data.phone || "",
-          });
+            email: data.email || user.email || "",
+          };
+
+          setUserData(profileData);
+          setFormData(profileData);
+        } else {
+          const profileData: UserProfile = {
+            fullName: "",
+            email: user.email || "",
+          };
+
+          setUserData(profileData);
+          setFormData(profileData);
+
+          console.log(
+            "User profile does not exist in Firestore."
+          );
         }
+      } catch (error: any) {
+        console.error(
+          "Error loading user profile:",
+          error.code,
+          error.message
+        );
+
+        // Authentication can still work when Firestore is offline.
+        const fallbackData: UserProfile = {
+          fullName: "",
+          email: user.email || "",
+        };
+
+        setUserData(fallbackData);
+        setFormData(fallbackData);
+
+        Alert.alert(
+          "Unable to load profile",
+          "Your account is signed in, but the profile could not be loaded."
+        );
+      } finally {
+        setLoading(false);
       }
     };
 
     fetchUserProfile();
   }, []);
 
-  // Logout
   const logout = async () => {
     try {
       await signOut(auth);
-
       navigation.navigate("Login" as never);
-    } catch (error) {
-      console.error("Logout Error:", error);
-    }
-  };
-
-  // Save updated account information
-  const handleSave = async () => {
-    const user = auth.currentUser;
-
-    if (!user) return;
-
-    try {
-      console.log("User data to update:", formData);
-
-      // Update user data in Firestore
-      const userRef = doc(db, "users", user.uid);
-
-      await updateDoc(userRef, {
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-      });
-
-      // Update local user data
-      setUserData({
-        fullName: formData.fullName,
-        email: formData.email,
-        phone: formData.phone,
-      });
-
-      // Exit editing mode
-      setEditing(false);
     } catch (error: any) {
-      console.error("Error when updating account details:", error);
+      console.error(
+        "Logout error:",
+        error.code,
+        error.message
+      );
 
-      Alert.alert("Error", error.message);
+      Alert.alert(
+        "Logout Error",
+        error.message || "Unable to log out."
+      );
     }
   };
 
-  // Cancel editing and restore previous values
+  const handleSave = () => {
+    const user = auth.currentUser;
+    const updatedFullName = formData.fullName.trim();
+
+    if (!user) {
+      Alert.alert(
+        "Error",
+        "No user is currently signed in."
+      );
+      return;
+    }
+
+    if (!updatedFullName) {
+      Alert.alert("Error", "Full name is required.");
+      return;
+    }
+
+    /*
+     * Update the screen immediately.
+     * This does not wait for Firestore.
+     */
+    setUserData((previousData) => ({
+      fullName: updatedFullName,
+      email:
+        previousData?.email ||
+        user.email ||
+        formData.email,
+    }));
+
+    setFormData((previousData) => ({
+      ...previousData,
+      fullName: updatedFullName,
+    }));
+
+    // Close editing mode immediately.
+    setEditing(false);
+
+    const userRef = doc(db, "users", user.uid);
+
+    /*
+     * Start the Firestore write in the background.
+     * A slow or offline connection will not leave the UI stuck.
+     */
+    void setDoc(
+      userRef,
+      {
+        fullName: updatedFullName,
+        email: user.email || formData.email,
+      },
+      {
+        merge: true,
+      }
+    )
+      .then(() => {
+        console.log(
+          "Profile synchronized with Firestore."
+        );
+      })
+      .catch((error: any) => {
+        console.error(
+          "Error synchronizing profile:",
+          error.code,
+          error.message
+        );
+
+        Alert.alert(
+          "Profile not synchronized",
+          "The new name is displayed, but it could not be saved to Firebase. Please check your connection."
+        );
+      });
+  };
+
   const handleCancel = () => {
     setFormData({
       fullName: userData?.fullName || "",
-      email: userData?.email || "",
-      phone: userData?.phone || "",
+      email:
+        userData?.email ||
+        auth.currentUser?.email ||
+        "",
     });
 
     setEditing(false);
   };
 
-  // Update form fields
-  const handleChange = (field: string, value: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      
-
-      {/* Header + Divider */}
+      {/* Header */}
       <View style={styles.headerContainer}>
         <View style={styles.header}>
           <Image
-            source={require("../../assets/images/myicon.png")}
+            source={require(
+              "../../assets/images/myicon.png"
+            )}
             style={styles.icon}
           />
 
-          <Text style={styles.headerText}>User Account</Text>
+          <Text style={styles.headerText}>
+            User Account
+          </Text>
         </View>
 
         <View style={styles.divider} />
       </View>
 
-      {/* Profile Card */}
+      {/* Profile card */}
       <View style={styles.profileCard}>
         <Image
-          source={require("../../assets/images/userProfileImage.jpg")}
+          source={require(
+            "../../assets/images/userProfileImage.jpg"
+          )}
           style={styles.profileImage}
         />
 
         <View style={styles.profileDetails}>
           {/* Name */}
-          <Text style={styles.detailLabel}>Name:</Text>
+          <View style={styles.fieldGroup}>
+            <Text style={styles.detailLabel}>Name:</Text>
 
-          {editing ? (
-            <TextInput
-              style={styles.input}
-              value={formData.fullName}
-              onChangeText={(text) =>
-                handleChange("fullName", text)
-              }
-            />
-          ) : (
+            {editing ? (
+              <TextInput
+                style={styles.input}
+                value={formData.fullName}
+                onChangeText={(text) =>
+                  setFormData((previousData) => ({
+                    ...previousData,
+                    fullName: text,
+                  }))
+                }
+                placeholder="Full Name"
+                autoCapitalize="words"
+                autoCorrect={false}
+                onSubmitEditing={handleSave}
+              />
+            ) : (
+              <Text style={styles.detailValue}>
+                {loading
+                  ? "Loading..."
+                  : userData?.fullName ||
+                    "No name provided"}
+              </Text>
+            )}
+          </View>
+
+          {/* Email */}
+          <View style={styles.fieldGroup}>
+            <Text style={styles.detailLabel}>Email:</Text>
+
             <Text style={styles.detailValue}>
-              {userData?.fullName || "Loading..."}
+              {loading
+                ? "Loading..."
+                : userData?.email ||
+                  auth.currentUser?.email ||
+                  "No email available"}
             </Text>
-          )}
-
-          {/* Email - not editable */}
-          <Text style={styles.detailLabel}>Email:</Text>
-
-          <Text style={styles.detailValue}>
-            {userData?.email || "Loading..."}
-          </Text>
-
-          {/* Phone */}
-          <Text style={styles.detailLabel}>Phone:</Text>
-
-          {editing ? (
-            <TextInput
-              style={styles.input}
-              value={formData.phone}
-              onChangeText={(text) =>
-                handleChange("phone", text)
-              }
-              keyboardType="phone-pad"
-            />
-          ) : (
-            <Text style={styles.detailValue}>
-              {userData?.phone || "Loading..."}
-            </Text>
-          )}
+          </View>
         </View>
       </View>
 
@@ -194,14 +281,18 @@ const UserAccountScreen = () => {
               style={styles.button}
               onPress={handleSave}
             >
-              <Text style={styles.buttonText}>Save</Text>
+              <Text style={styles.buttonText}>
+                Save
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.button}
               onPress={handleCancel}
             >
-              <Text style={styles.buttonText}>Cancel</Text>
+              <Text style={styles.buttonText}>
+                Cancel
+              </Text>
             </TouchableOpacity>
           </>
         ) : (
@@ -219,7 +310,9 @@ const UserAccountScreen = () => {
               style={styles.button}
               onPress={logout}
             >
-              <Text style={styles.buttonText}>Log Out</Text>
+              <Text style={styles.buttonText}>
+                Log Out
+              </Text>
             </TouchableOpacity>
           </>
         )}
@@ -252,9 +345,9 @@ const styles = StyleSheet.create({
   },
 
   icon: {
-    marginRight: 10,
     width: 50,
     height: 50,
+    marginRight: 10,
   },
 
   headerText: {
@@ -263,30 +356,31 @@ const styles = StyleSheet.create({
   },
 
   divider: {
+    width: "100%",
     height: 1,
     backgroundColor: "#000",
-    width: "100%",
   },
 
   profileCard: {
     flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    width: "90%",
+    minHeight: 200,
+    padding: 20,
+    marginBottom: 20,
     backgroundColor: "#E0E8FF",
     borderWidth: 2,
     borderColor: "#00C853",
     borderRadius: 12,
-    padding: 20,
-    alignSelf: "center",
-    width: "90%",
-    height: 200,
-    marginBottom: 20,
   },
 
   profileImage: {
     width: 120,
     height: 120,
-    borderRadius: 12,
     marginRight: 20,
     backgroundColor: "#ccc",
+    borderRadius: 12,
   },
 
   profileDetails: {
@@ -294,14 +388,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  fieldGroup: {
+    marginBottom: 18,
+  },
+
   detailLabel: {
-    fontWeight: "600",
     fontSize: 16,
+    fontWeight: "600",
   },
 
   detailValue: {
+    marginTop: 5,
     fontSize: 16,
-    marginBottom: 10,
+  },
+
+  input: {
+    marginTop: 5,
+    paddingVertical: 4,
+    fontSize: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#888",
   },
 
   buttonRow: {
@@ -313,31 +419,20 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    backgroundColor: "#1DB954",
+    flex: 0.45,
+    alignItems: "center",
     paddingVertical: 12,
     paddingHorizontal: 20,
+    backgroundColor: "#1DB954",
     borderRadius: 25,
-    alignItems: "center",
-    flex: 0.45,
   },
 
   buttonText: {
     color: "#fff",
+    fontSize: 16,
     fontWeight: "600",
-    fontSize: 16,
-  },
-
-  
-
-  input: {
-    fontSize: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#888",
-    marginBottom: 10,
-    paddingVertical: 4,
   },
 });
-
 
 
 

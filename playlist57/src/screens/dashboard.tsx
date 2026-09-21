@@ -1,7 +1,6 @@
-
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
   Image,
@@ -17,25 +16,48 @@ import { styles } from "../styles/style";
 const Dashboard: React.FC = () => {
   const navigation = useNavigation();
 
-  const [fullName, setFullName] = useState("there");
+  // Empty name displays only "Good morning/afternoon/evening!"
+  const [fullName, setFullName] = useState("");
 
-  // Fetch user's name from Firestore
-  // to display a greeting to the user
   useEffect(() => {
-    const fetchUserName = async () => {
-      const user = auth.currentUser;
-      if (!user) return;
+    const user = auth.currentUser;
 
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
+    if (!user) {
+      setFullName("");
+      return;
+    }
 
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setFullName(data.fullName);
+    const userRef = doc(db, "users", user.uid);
+
+    /*
+     * Listen for profile changes.
+     * The Dashboard updates when the user changes their name.
+     */
+    const unsubscribe = onSnapshot(
+      userRef,
+      (documentSnapshot) => {
+        if (documentSnapshot.exists()) {
+          const data = documentSnapshot.data();
+
+          setFullName(data.fullName?.trim() || "");
+        } else {
+          setFullName("");
+        }
+      },
+      (error) => {
+        console.error(
+          "Error listening for profile changes:",
+          error.code,
+          error.message
+        );
+
+        // Keep the greeting clean if the profile cannot load.
+        setFullName("");
       }
-    };
+    );
 
-    fetchUserName();
+    // Remove the listener when Dashboard unmounts.
+    return unsubscribe;
   }, []);
 
   const getGreeting = () => {
@@ -48,51 +70,82 @@ const Dashboard: React.FC = () => {
         ? "Good afternoon"
         : "Good evening";
 
-    return `${greeting}${fullName ? ", " + fullName : ""}!`;
+    if (fullName) {
+      return `${greeting}, ${fullName}!`;
+    }
+
+    return `${greeting}!`;
   };
 
   const tiles = [
-    { title: "Songs", icon: "musical-notes", screen: "Songs" },
-    { title: "Podcasts", icon: "mic", screen: "Podcasts" },
-    { title: "Audiobooks", icon: "book", screen: "Audiobooks" },
-    { title: "Videos", icon: "videocam", screen: "Videos" },
+    {
+      title: "Songs",
+      icon: "musical-notes",
+      screen: "Songs",
+    },
+    {
+      title: "Podcasts",
+      icon: "mic",
+      screen: "Podcasts",
+    },
+    {
+      title: "Audiobooks",
+      icon: "book",
+      screen: "Audiobooks",
+    },
+    {
+      title: "Videos",
+      icon: "videocam",
+      screen: "Videos",
+    },
   ];
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={style.container}>
-        {/* Header + Divider */}
-        <View style={style.headerContainer}>
-          <View style={style.header}>
+      <View style={localStyles.container}>
+        {/* Header */}
+        <View style={localStyles.headerContainer}>
+          <View style={localStyles.header}>
             <Image
-              source={require("../assets/images/myicon.png")}
-              style={style.icon}
+              source={require(
+                "../assets/images/myicon.png"
+              )}
+              style={localStyles.icon}
             />
 
-            <Text style={style.headerText}>Dashboard</Text>
+            <Text style={localStyles.headerText}>
+              Dashboard
+            </Text>
           </View>
 
-          <View style={style.divider} />
+          <View style={localStyles.divider} />
         </View>
 
-        <Text style={{ color: "grey", fontSize: 18 }}>
+        {/* Greeting */}
+        <Text style={localStyles.greeting}>
           {getGreeting()}
         </Text>
 
+        {/* Playlist logo */}
         <View style={styles.dashboardImage}>
           <Image
-            source={require("../assets/images/playlist-logo.png")}
-            style={{ width: 390, resizeMode: "contain" }}
+            source={require(
+              "../assets/images/playlist-logo.png"
+            )}
+            style={localStyles.dashboardLogo}
           />
         </View>
 
+        {/* Dashboard tiles */}
         <View style={styles.tilesContainer}>
-          {tiles.map((tile, index) => (
+          {tiles.map((tile) => (
             <TouchableOpacity
-              key={index}
+              key={tile.screen}
               style={styles.tile}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate(tile.screen as never)}
+              onPress={() =>
+                navigation.navigate(tile.screen as never)
+              }
             >
               <Ionicons
                 name={tile.icon as any}
@@ -100,7 +153,9 @@ const Dashboard: React.FC = () => {
                 color="#fff"
               />
 
-              <Text style={styles.tileText}>{tile.title}</Text>
+              <Text style={styles.tileText}>
+                {tile.title}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -111,7 +166,7 @@ const Dashboard: React.FC = () => {
 
 export default Dashboard;
 
-const style = StyleSheet.create({
+const localStyles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#fff",
@@ -133,9 +188,9 @@ const style = StyleSheet.create({
   },
 
   icon: {
-    marginRight: 10,
     width: 50,
     height: 50,
+    marginRight: 10,
   },
 
   headerText: {
@@ -144,68 +199,19 @@ const style = StyleSheet.create({
   },
 
   divider: {
+    width: "100%",
     height: 1,
     backgroundColor: "#000",
-    width: "100%",
   },
 
-  profileCard: {
-    flexDirection: "row",
-    backgroundColor: "#E0E8FF",
-    borderWidth: 2,
-    borderColor: "#00C853",
-    borderRadius: 12,
-    padding: 20,
-    alignSelf: "center",
-    width: "90%",
-    height: 160,
-    marginBottom: 20,
+  greeting: {
+    color: "grey",
+    fontSize: 18,
   },
 
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 12,
-    marginRight: 20,
-    backgroundColor: "#ccc",
-  },
-
-  profileDetails: {
-    flex: 1,
-    justifyContent: "center",
-  },
-
-  detailLabel: {
-    fontWeight: "600",
-    fontSize: 16,
-  },
-
-  detailValue: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignSelf: "center",
-    width: "90%",
-    marginTop: 10,
-  },
-
-  button: {
-    backgroundColor: "#1DB954",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    alignItems: "center",
-    flex: 0.45,
-  },
-
-  buttonText: {
-    color: "#fff",
-    fontWeight: "600",
-    fontSize: 16,
+  dashboardLogo: {
+    width: 390,
+    resizeMode: "contain",
   },
 });
 
