@@ -244,8 +244,7 @@ const PlaylistSongs = () => {
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
         <TouchableOpacity
-          onPress={() => navigation.navigate("Playlists")}
-          style={styles.backButton}
+          onPress={() => navigation.goBack()}
         >
           <Ionicons
             name="arrow-back"
@@ -309,6 +308,8 @@ const PlaylistSongs = () => {
 };
 
 export default PlaylistSongs;
+
+
 
 
 

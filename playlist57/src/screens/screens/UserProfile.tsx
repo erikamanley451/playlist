@@ -1,5 +1,4 @@
 
-import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { signOut } from "firebase/auth";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
@@ -119,13 +118,7 @@ const UserAccountScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Back button */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate("AppTabs" as never)}
-        style={styles.backButton}
-      >
-        <Ionicons name="arrow-back" size={24} color="black" />
-      </TouchableOpacity>
+      
 
       {/* Header + Divider */}
       <View style={styles.headerContainer}>
@@ -334,12 +327,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
 
-  backButton: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    zIndex: 999,
-  },
+  
 
   input: {
     fontSize: 16,
