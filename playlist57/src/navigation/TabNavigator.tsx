@@ -1,18 +1,18 @@
-import AntDesign from '@expo/vector-icons/AntDesign';
-import Entypo from '@expo/vector-icons/Entypo';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
-import Octicons from '@expo/vector-icons/Octicons';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import * as React from 'react';
-import Dashboard from '../screens/dashboard';
-import Downloads from '../screens/screens/Downloads';
-import Playlists from '../screens/screens/Playlists';
-import UserProfile from '../screens/screens/UserProfile';
+import AntDesign from "@expo/vector-icons/AntDesign";
+import Entypo from "@expo/vector-icons/Entypo";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import MaterialCommunityIcons from "@expo/vector-icons/MaterialCommunityIcons";
+import Octicons from "@expo/vector-icons/Octicons";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import type { FC } from "react";
+import Dashboard from "../screens/dashboard";
+import Playlist from "../screens/playlist";
+import Downloads from "../screens/screens/Downloads";
+import UserProfile from "../screens/screens/UserProfile";
 
 const Tab = createBottomTabNavigator();
 
-const TabNavigator:React.FC = () => {
+const TabNavigator: FC = () => {
   return (
       <Tab.Navigator screenOptions={{
         tabBarStyle: {
@@ -46,7 +46,7 @@ const TabNavigator:React.FC = () => {
 
         <Tab.Screen 
           name="Playlists" 
-          component={Playlists}
+          component={Playlist}
           options = {{
             tabBarLabel: "Playlists",
             headerShown: false,
@@ -88,7 +88,7 @@ const TabNavigator:React.FC = () => {
 
 
       </Tab.Navigator>
-);
-}
+  );
+};
 
 export default TabNavigator;
