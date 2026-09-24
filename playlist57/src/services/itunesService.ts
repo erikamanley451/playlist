@@ -18,6 +18,12 @@ export type ITunesMediaItem = {
 };
 
 const SEARCH_URL = "https://itunes.apple.com/search";
+const TOP_SONGS_CACHE_MS = 10 * 60 * 1000;
+
+let topSongsCache: {
+  songs: ITunesMediaItem[];
+  savedAt: number;
+} | null = null;
 
 const getResults = (data: any): any[] =>
   Array.isArray(data?.results) ? data.results : [];
@@ -69,21 +75,47 @@ export const fetchSongs = async (term: string): Promise<ITunesMediaItem[]> => {
 };
 
 export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
-  const chartResponse = await fetch(
-    "https://rss.marketingtools.apple.com/api/v2/us/music/most-played/50/songs.json"
-  );
-
-  if (!chartResponse.ok) {
-    throw new Error(`Apple chart request failed: ${chartResponse.status}`);
+  if (
+    topSongsCache &&
+    Date.now() - topSongsCache.savedAt < TOP_SONGS_CACHE_MS
+  ) {
+    return topSongsCache.songs;
   }
 
-  const chartData = await chartResponse.json();
-  const chartResults: any[] = Array.isArray(chartData?.feed?.results)
-    ? chartData.feed.results
-    : [];
+  const chartLimits = [50, 20, 10];
+  let chartResults: any[] = [];
+  let lastChartError: unknown = null;
+
+  for (const limit of chartLimits) {
+    try {
+      const chartResponse = await fetch(
+        `https://rss.marketingtools.apple.com/api/v2/us/music/most-played/${limit}/songs.json`
+      );
+
+      if (!chartResponse.ok) {
+        throw new Error(`Apple chart request failed: ${chartResponse.status}`);
+      }
+
+      const chartData = await chartResponse.json();
+      chartResults = Array.isArray(chartData?.feed?.results)
+        ? chartData.feed.results
+        : [];
+
+      if (chartResults.length > 0) break;
+    } catch (error) {
+      lastChartError = error;
+      console.warn(`Top ${limit} chart request failed:`, error);
+    }
+  }
 
   if (chartResults.length === 0) {
-    throw new Error("Apple chart response did not contain any songs.");
+    if (topSongsCache) return topSongsCache.songs;
+
+    console.warn(
+      "Apple charts are unavailable; using iTunes search results.",
+      lastChartError
+    );
+    return fetchSongs("popular hits");
   }
 
   const ids = chartResults
@@ -126,7 +158,7 @@ export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
 
   // Preserve Apple's ranking. When lookup enrichment fails, keep the chart
   // metadata and simply omit the play button by setting audioUrl to null.
-  return chartResults.map((chartItem: any): ITunesMediaItem => {
+  const topSongs = chartResults.map((chartItem: any): ITunesMediaItem => {
     const id = String(chartItem?.id ?? "");
     const enrichedSong = songsById[id];
 
@@ -145,6 +177,13 @@ export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
       releaseDate: chartItem?.releaseDate ?? null,
     };
   });
+
+  topSongsCache = {
+    songs: topSongs,
+    savedAt: Date.now(),
+  };
+
+  return topSongs;
 };
 
 export const fetchAudiobooks = async (term: string): Promise<ITunesMediaItem[]> => {

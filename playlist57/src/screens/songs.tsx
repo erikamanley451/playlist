@@ -17,7 +17,6 @@ const Songs = () => {
   const [loading, setLoading] = useState(true);
   const [activeSong, setActiveSong] = useState<ITunesMediaItem | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-  const [playerVisible, setPlayerVisible] = useState(false);
 
   const loadTopSongs = async () => {
     try { setLoading(true); setSongs(await fetchTopSongs()); }
@@ -40,6 +39,11 @@ const Songs = () => {
     else void loadTopSongs();
   }, [initialQuery]);
 
+  const closePlayer = () => {
+    setActiveSong(null);
+    setCurrentIndex(null);
+  };
+
   const playableIndex = (start: number, direction: 1 | -1) => {
     for (let index = start + direction; index >= 0 && index < songs.length; index += direction)
       if (songs[index].audioUrl) return index;
@@ -49,7 +53,6 @@ const Songs = () => {
     if (!songs[index]?.audioUrl) return;
     setActiveSong(songs[index]);
     setCurrentIndex(index);
-    setPlayerVisible(true);
   };
 
   return (
@@ -90,29 +93,29 @@ const Songs = () => {
         />
       )}
       {activeSong?.audioUrl && currentIndex !== null && (
-      <AudioPlayer
-        previewUrl={activeSong.audioUrl}
-        songName={activeSong.title}
-        artistName={activeSong.creator}
-        visible={playerVisible}
-        onClose={() => setPlayerVisible(false)}
-        onNext={() => {
-          if (currentIndex === null) return;
-          const next = playableIndex(currentIndex, 1);
-          if (next !== null) playAt(next);
-        }}
-        onPrevious={() => {
-          if (currentIndex === null) return;
-          const previous = playableIndex(currentIndex, -1);
-          if (previous !== null) playAt(previous);
-        }}
-        disableNext={currentIndex === null || playableIndex(currentIndex, 1) === null}
-        disablePrevious={currentIndex === null || playableIndex(currentIndex, -1) === null}
-      />
+        <AudioPlayer
+          previewUrl={activeSong.audioUrl}
+          songName={activeSong.title}
+          artistName={activeSong.creator}
+          onClose={closePlayer}
+          onNext={() => {
+            const next = playableIndex(currentIndex, 1);
+            if (next !== null) playAt(next);
+          }}
+          onPrevious={() => {
+            const previous = playableIndex(currentIndex, -1);
+            if (previous !== null) playAt(previous);
+          }}
+          disableNext={playableIndex(currentIndex, 1) === null}
+          disablePrevious={playableIndex(currentIndex, -1) === null}
+        />
       )}
     </SafeAreaView>
   );
 };
 
 export default Songs;
+
+
+
 

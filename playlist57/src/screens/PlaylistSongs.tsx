@@ -1,314 +1,129 @@
-
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  useNavigation,
-  useRoute,
-} from "@react-navigation/native";
-import { useEffect, useState } from "react";
-import {
-  FlatList,
-  Image,
-  Linking,
-  SafeAreaView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Linking, SafeAreaView, Text, TouchableOpacity, View } from "react-native";
 import AudioPlayer from "../components/AudioPlayer";
+import { auth } from "../services/firebase";
+import type { ITunesMediaItem } from "../services/itunesService";
+import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
+import type { StoredPlaylist } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const PlaylistSongs = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
-
-  const { playlist } = route.params as {
-    playlist?: string;
-  };
-
-  const parsed = playlist ? JSON.parse(playlist) : null;
-
-  const [songs, setSongs] = useState<any[]>(parsed?.songs || []);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [activeSong, setActiveSong] = useState<any | null>(null);
-  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
-
-  useEffect(() => {
-    setSongs(parsed?.songs || []);
+  const { playlist } = route.params as { playlist?: string };
+  const passedPlaylist = useMemo<StoredPlaylist | null>(() => {
+    if (!playlist) return null;
+    try { return JSON.parse(playlist); }
+    catch { return null; }
   }, [playlist]);
 
-  const hasPreview = (item: any) =>
-    item.preview_url ||
-    item.audio_preview_url ||
-    item.attributes?.previews?.[0]?.url;
+  const [uid, setUid] = useState(auth.currentUser?.uid ?? null);
+  const [songs, setSongs] = useState<ITunesMediaItem[]>([]);
+  const [activeItem, setActiveItem] = useState<ITunesMediaItem | null>(null);
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const getPreviewUrl = (item: any) =>
-    item.preview_url ||
-    item.audio_preview_url ||
-    item.attributes?.previews?.[0]?.url;
+  useEffect(() => onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null)), []);
+  useEffect(() => {
+    if (!uid || !passedPlaylist) { setSongs([]); setLoading(false); return; }
+    setLoading(true);
+    loadPlaylists(uid)
+      .then((all) => {
+        const current = all.find((item) => item.id === passedPlaylist.id) ??
+          all.find((item) => item.name === passedPlaylist.name);
+        setSongs(current?.songs ?? []);
+      })
+      .catch((error) => { console.error("Failed to load playlist:", error); setSongs([]); })
+      .finally(() => setLoading(false));
+  }, [uid, passedPlaylist]);
 
-  const getImageUrl = (item: any) =>
-    item.album?.images?.[0]?.url ||
-    item.images?.[0]?.url ||
-    item.attributes?.artwork?.url
-      ?.replace("{w}", "300")
-      .replace("{h}", "300") ||
-    item.snippet?.thumbnails?.medium?.url ||
-    null;
-
-  const getArtist = (item: any) =>
-    item.artists?.[0]?.name ||
-    item.publisher ||
-    item.attributes?.artistName ||
-    item.narrator ||
-    item.snippet?.channelTitle ||
-    item.show?.publisher ||
-    "Unknown Artist";
-
-  const getTitle = (item: any) =>
-    item.name ||
-    item.snippet?.title ||
-    item.attributes?.name ||
-    "Untitled";
-
-  const findNextPlayableIndex = (
-    startIndex: number
-  ): number | null => {
-    for (let i = startIndex + 1; i < songs.length; i++) {
-      if (hasPreview(songs[i])) {
-        return i;
-      }
+  const playableIndex = (start: number, direction: 1 | -1) => {
+    for (let index = start + direction; index >= 0 && index < songs.length; index += direction) {
+      if (songs[index].audioUrl) return index;
     }
-
     return null;
   };
 
-  const findPreviousPlayableIndex = (
-    startIndex: number
-  ): number | null => {
-    for (let i = startIndex - 1; i >= 0; i--) {
-      if (hasPreview(songs[i])) {
-        return i;
-      }
-    }
-
-    return null;
-  };
-
-  const handlePlay = (item: any, index: number) => {
-    const preview = getPreviewUrl(item);
-
-    if (!preview) {
-      return;
-    }
-
-    setPreviewUrl(preview);
-    setActiveSong(item);
+  const playAt = (index: number) => {
+    if (!songs[index]?.audioUrl) return;
     setCurrentIndex(index);
-  };
-
-  const handleNext = () => {
-    if (currentIndex === null) {
-      return;
-    }
-
-    const nextIndex = findNextPlayableIndex(currentIndex);
-
-    if (nextIndex !== null) {
-      handlePlay(songs[nextIndex], nextIndex);
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentIndex === null) {
-      return;
-    }
-
-    const previousIndex =
-      findPreviousPlayableIndex(currentIndex);
-
-    if (previousIndex !== null) {
-      handlePlay(songs[previousIndex], previousIndex);
-    }
+    setActiveItem(songs[index]);
   };
 
   const handleDelete = async (indexToRemove: number) => {
-    const updated = [...songs];
-
-    updated.splice(indexToRemove, 1);
-
-    setSongs(updated);
-
-    if (parsed?.name) {
-      const stored =
-        await AsyncStorage.getItem("playlists");
-
-      if (stored) {
-        const playlists = JSON.parse(stored);
-
-        const playlistIndex = playlists.findIndex(
-          (p: any) => p.name === parsed.name
-        );
-
-        if (playlistIndex !== -1) {
-          playlists[playlistIndex].songs = updated;
-
-          await AsyncStorage.setItem(
-            "playlists",
-            JSON.stringify(playlists)
-          );
-        }
-      }
-    }
+    if (!uid || !passedPlaylist) return;
+    const updatedSongs = songs.filter((_, index) => index !== indexToRemove);
+    const playlists = await loadPlaylists(uid);
+    const updatedPlaylists = playlists.map((item) => {
+      const matches = passedPlaylist.id ? item.id === passedPlaylist.id : item.name === passedPlaylist.name;
+      return matches ? { ...item, songs: updatedSongs } : item;
+    });
+    await savePlaylists(uid, updatedPlaylists);
+    setSongs(updatedSongs);
 
     if (currentIndex === indexToRemove) {
-      setActiveSong(null);
-      setPreviewUrl("");
+      setActiveItem(null);
       setCurrentIndex(null);
+    } else if (currentIndex !== null && indexToRemove < currentIndex) {
+      setCurrentIndex(currentIndex - 1);
     }
-  };
-
-  const renderItem = ({
-    item,
-    index,
-  }: {
-    item: any;
-    index: number;
-  }) => {
-    const imageUrl = getImageUrl(item);
-    const preview = getPreviewUrl(item);
-
-    return (
-      <View style={styles.songCard}>
-        {imageUrl && (
-          <Image
-            source={{ uri: imageUrl }}
-            style={styles.songImage}
-          />
-        )}
-
-        <View style={styles.songDetails}>
-          <Text style={styles.songTitle}>
-            {getTitle(item)}
-          </Text>
-
-          <Text style={styles.songArtist}>
-            {getArtist(item)}
-          </Text>
-        </View>
-
-        {preview ? (
-          <TouchableOpacity
-            onPress={() => handlePlay(item, index)}
-          >
-            <Ionicons
-              name="play-circle"
-              size={28}
-              color="#1DB954"
-            />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => {
-              const url =
-                item.external_urls?.spotify ||
-                item.attributes?.url;
-
-              if (url) {
-                Linking.openURL(url);
-              }
-            }}
-          >
-            <Ionicons
-              name="open-outline"
-              size={24}
-              color="#1DB954"
-            />
-          </TouchableOpacity>
-        )}
-
-        <TouchableOpacity
-          onPress={() => handleDelete(index)}
-        >
-          <Ionicons
-            name="trash"
-            size={24}
-            color="red"
-          />
-        </TouchableOpacity>
-      </View>
-    );
   };
 
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color="black"
-          />
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>
-          {parsed?.name || "Playlist"}
-        </Text>
+        <Text style={styles.headerTitle}>{passedPlaylist?.name || "Playlist"}</Text>
       </View>
 
-      {songs.length === 0 ? (
-        <Text
-          style={{
-            textAlign: "center",
-            marginTop: 50,
-          }}
-        >
-          No media in this playlist.
-        </Text>
+      {loading ? (
+        <ActivityIndicator size="large" color="#1DB954" style={{ marginTop: 50 }} />
+      ) : songs.length === 0 ? (
+        <Text style={{ textAlign: "center", marginTop: 50 }}>No media in this playlist.</Text>
       ) : (
-        <FlatList
-          data={songs}
-          keyExtractor={(item, index) =>
-            item.id ||
-            item.attributes?.url ||
-            index.toString()
-          }
-          renderItem={renderItem}
+        <FlatList data={songs} keyExtractor={(item) => item.id}
+          renderItem={({ item, index }) => (
+            <View style={styles.songCard}>
+              {item.artworkUrl && <Image source={{ uri: item.artworkUrl }} style={styles.songImage} />}
+              <View style={styles.songDetails}>
+                <Text style={styles.songTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.songArtist} numberOfLines={1}>{item.creator}</Text>
+              </View>
+              {item.audioUrl ? (
+                <TouchableOpacity onPress={() => playAt(index)}>
+                  <Ionicons name="play-circle" size={28} color="#1DB954" />
+                </TouchableOpacity>
+              ) : item.externalUrl ? (
+                <TouchableOpacity onPress={() => Linking.openURL(item.externalUrl!)}>
+                  <Ionicons name="open-outline" size={24} color="#1DB954" />
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={() => void handleDelete(index)}>
+                <Ionicons name="trash" size={24} color="red" />
+              </TouchableOpacity>
+            </View>
+          )}
         />
       )}
 
-      {previewUrl && activeSong && (
-        <AudioPlayer
-          previewUrl={previewUrl}
-          songName={getTitle(activeSong)}
-          artistName={getArtist(activeSong)}
-          onClose={() => {
-            setPreviewUrl("");
-            setActiveSong(null);
-            setCurrentIndex(null);
-          }}
-          onNext={handleNext}
-          onPrevious={handlePrevious}
-          disableNext={
-            findNextPlayableIndex(
-              currentIndex ?? -1
-            ) === null
-          }
-          disablePrevious={
-            findPreviousPlayableIndex(
-              currentIndex ?? songs.length
-            ) === null
-          }
-        />
+      {activeItem?.audioUrl && currentIndex !== null && (
+        <AudioPlayer previewUrl={activeItem.audioUrl} songName={activeItem.title} artistName={activeItem.creator}
+          onClose={() => { setActiveItem(null); setCurrentIndex(null); }}
+          onNext={() => { const next = playableIndex(currentIndex, 1); if (next !== null) playAt(next); }}
+          onPrevious={() => { const previous = playableIndex(currentIndex, -1); if (previous !== null) playAt(previous); }}
+          disableNext={playableIndex(currentIndex, 1) === null}
+          disablePrevious={playableIndex(currentIndex, -1) === null} />
       )}
     </SafeAreaView>
   );
 };
 
 export default PlaylistSongs;
-
 
 
 

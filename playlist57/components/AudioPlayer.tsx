@@ -1,6 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { useEffect, useRef, useState } from "react";
+import { Ionicons } from '@expo/vector-icons';
+import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { VideoView, useVideoPlayer } from 'expo-video';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -8,17 +9,17 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from "react-native";
+} from 'react-native';
 
-const { width } = Dimensions.get("window");
+const { width } = Dimensions.get('window');
 
 type AudioPlayerProps = {
-  previewUrl: string | null;
+  previewUrl: string;
   songName: string;
   artistName: string;
   onClose: () => void;
-  onNext?: () => void;
-  onPrevious?: () => void;
+  onNext: () => void;
+  onPrevious: () => void;
   disableNext?: boolean;
   disablePrevious?: boolean;
 };
@@ -33,193 +34,286 @@ const AudioPlayer = ({
   disableNext = false,
   disablePrevious = false,
 }: AudioPlayerProps) => {
-  // Initialize without a source. This avoids passing null into Expo's source
-  // resolver, which calls endsWith() in some SDK versions.
-  const player = useAudioPlayer();
-  const status = useAudioPlayerStatus(player);
-  const closingRef = useRef(false);
   const [expanded, setExpanded] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
+  const [progress, setProgress] = useState(0);
+
   const progressAnim = useRef(new Animated.Value(0)).current;
 
+  const isVideo =
+    previewUrl.endsWith('.mp4') || previewUrl.includes('video');
+
+  /*
+   * Audio player
+   */
+  const audioPlayer = useAudioPlayer(
+    isVideo ? null : previewUrl
+  );
+
+  const audioStatus = useAudioPlayerStatus(audioPlayer);
+
+  /*
+   * Video player
+   */
+  const videoPlayer = useVideoPlayer(
+    isVideo ? previewUrl : null,
+    (player) => {
+      player.loop = false;
+    }
+  );
+
+  const isPlaying = isVideo
+    ? videoPlayer.playing
+    : audioStatus.playing;
+
+  /*
+   * Audio progress
+   */
   useEffect(() => {
-    if (!previewUrl) return;
+    if (!isVideo && audioStatus.duration > 0) {
+      const position =
+        audioStatus.currentTime / audioStatus.duration;
 
-    closingRef.current = false;
-    setIsClosing(false);
+      setProgress(position);
 
-    try {
-      player.replace(previewUrl);
-      player.play();
-    } catch (error) {
-      console.warn("Audio could not start:", error);
+      Animated.timing(progressAnim, {
+        toValue: position,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+    }
+  }, [
+    audioStatus.currentTime,
+    audioStatus.duration,
+    isVideo,
+    progressAnim,
+  ]);
+
+  /*
+   * Automatically start audio when previewUrl changes.
+   */
+  useEffect(() => {
+    if (!previewUrl) {
+      return;
     }
 
-    // No cleanup: useAudioPlayer releases its native player on unmount.
-  }, [player, previewUrl]);
-
-  useEffect(() => {
-    const duration = status.duration ?? 0;
-    const currentTime = status.currentTime ?? 0;
-    const progress = duration > 0 ? currentTime / duration : 0;
-
-    Animated.timing(progressAnim, {
-      toValue: progress,
-      duration: 250,
-      useNativeDriver: false,
-    }).start();
-
-    if (status.didJustFinish) progressAnim.setValue(0);
-  }, [status.currentTime, status.duration, status.didJustFinish, progressAnim]);
-
-  const closePlayer = () => {
-    if (closingRef.current) return;
-
-    closingRef.current = true;
-    setIsClosing(true);
-
-    try {
-      // Safe here because the parent keeps this component mounted.
-      if (status.playing) player.pause();
-    } catch (error) {
-      console.warn("Audio could not pause while closing:", error);
+    if (isVideo) {
+      setExpanded(true);
+    } else {
+      audioPlayer.play();
     }
 
-    // The parent clears previewUrl but keeps this component mounted.
-    onClose();
-  };
+    return () => {
+      if (isVideo) {
+        videoPlayer.pause();
+      } else {
+        audioPlayer.pause();
+      }
+    };
+  }, [previewUrl]);
 
+  /*
+   * Play / pause
+   */
   const togglePlayPause = () => {
-    if (closingRef.current) return;
-
     try {
-      if (status.playing) player.pause();
-      else player.play();
+      if (isVideo) {
+        if (videoPlayer.playing) {
+          videoPlayer.pause();
+        } else {
+          videoPlayer.play();
+        }
+      } else {
+        if (audioStatus.playing) {
+          audioPlayer.pause();
+        } else {
+          audioPlayer.play();
+        }
+      }
     } catch (error) {
-      console.warn("Audio player was unavailable:", error);
+      console.error('Play/Pause error:', error);
     }
   };
-
-  const previousDisabled = isClosing || disablePrevious || !onPrevious;
-  const nextDisabled = isClosing || disableNext || !onNext;
-
-  if (!previewUrl) return null;
 
   return (
-    <Animated.View style={[styles.container, expanded && styles.expanded]}>
+    <Animated.View
+      style={[
+        styles.container,
+        expanded && styles.expanded,
+      ]}
+    >
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={closePlayer} disabled={isClosing}>
-          <Ionicons name="close" size={24} color="white" />
+        <TouchableOpacity onPress={onClose}>
+          <Ionicons
+            name="close"
+            size={24}
+            color="white"
+          />
         </TouchableOpacity>
 
         <View style={styles.titleContainer}>
-          <Text style={styles.songTitle} numberOfLines={1}>{songName}</Text>
-          <Text style={styles.artistName} numberOfLines={1}>{artistName}</Text>
+          <Text
+            style={styles.songTitle}
+            numberOfLines={1}
+          >
+            {songName}
+          </Text>
+
+          <Text
+            style={styles.artistName}
+            numberOfLines={1}
+          >
+            {artistName}
+          </Text>
         </View>
 
         <TouchableOpacity
           style={styles.expandToggle}
-          onPress={() => setExpanded((value) => !value)}
-          disabled={isClosing}
+          onPress={() => setExpanded(!expanded)}
         >
           <Ionicons
-            name={expanded ? "chevron-down" : "chevron-up"}
+            name={expanded ? 'chevron-down' : 'chevron-up'}
             size={24}
             color="white"
           />
         </TouchableOpacity>
       </View>
 
+      {expanded && isVideo && (
+        <VideoView
+          player={videoPlayer}
+          style={styles.videoPlayer}
+          nativeControls={false}
+          contentFit="contain"
+        />
+      )}
+
       <View style={styles.controls}>
         <TouchableOpacity
-          onPress={() => !previousDisabled && onPrevious?.()}
-          disabled={previousDisabled}
+          onPress={onPrevious}
+          disabled={disablePrevious}
         >
           <Ionicons
             name="play-skip-back"
             size={36}
-            color={previousDisabled ? "#555" : "white"}
+            color={disablePrevious ? '#555' : 'white'}
           />
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={togglePlayPause} disabled={isClosing}>
+        <TouchableOpacity onPress={togglePlayPause}>
           <Ionicons
-            name={status.playing ? "pause-circle" : "play-circle"}
+            name={
+              isPlaying
+                ? 'pause-circle'
+                : 'play-circle'
+            }
             size={70}
-            color={isClosing ? "#555" : "#1DB954"}
+            color="#1DB954"
           />
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => !nextDisabled && onNext?.()}
-          disabled={nextDisabled}
+          onPress={onNext}
+          disabled={disableNext}
         >
           <Ionicons
             name="play-skip-forward"
             size={36}
-            color={nextDisabled ? "#555" : "white"}
+            color={disableNext ? '#555' : 'white'}
           />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.progressBarContainer}>
-        <Animated.View
-          style={[
-            styles.progressBar,
-            {
-              width: progressAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, width - 40],
-              }),
-            },
-          ]}
-        />
-      </View>
+      {!isVideo && (
+        <View style={styles.progressBarContainer}>
+          <Animated.View
+            style={[
+              styles.progressBar,
+              {
+                width: progressAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, width - 40],
+                }),
+              },
+            ]}
+          />
+        </View>
+      )}
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: "#121212",
+    backgroundColor: '#121212',
     padding: 16,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     elevation: 12,
   },
-  expanded: { height: 220 },
-  headerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+
+  expanded: {
+    height: 400,
   },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
   titleContainer: {
     flex: 1,
-    alignItems: "center",
+    alignItems: 'center',
     marginHorizontal: 10,
   },
-  songTitle: { color: "white", fontWeight: "bold", fontSize: 16 },
-  artistName: { color: "#aaa", fontSize: 13 },
-  expandToggle: { padding: 4 },
+
+  songTitle: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+
+  artistName: {
+    color: '#aaa',
+    fontSize: 13,
+  },
+
+  expandToggle: {
+    padding: 4,
+  },
+
   controls: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
     marginTop: 20,
     marginBottom: 14,
   },
+
   progressBarContainer: {
     height: 4,
-    backgroundColor: "#333",
+    backgroundColor: '#333',
     borderRadius: 2,
-    overflow: "hidden",
+    overflow: 'hidden',
     marginHorizontal: 20,
   },
-  progressBar: { height: 4, backgroundColor: "#1DB954" },
+
+  progressBar: {
+    height: 4,
+    backgroundColor: '#1DB954',
+  },
+
+  videoPlayer: {
+    width: '100%',
+    height: 200,
+    marginTop: 20,
+    borderRadius: 12,
+  },
 });
 
 export default AudioPlayer;
+

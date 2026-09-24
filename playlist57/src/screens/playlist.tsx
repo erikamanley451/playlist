@@ -1,198 +1,89 @@
-
 import { Ionicons } from "@expo/vector-icons";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  useNavigation,
-  useRoute,
-} from "@react-navigation/native";
-import { useEffect, useState } from "react";
-import {
-  Alert,
-  FlatList,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useMemo, useState } from "react";
+import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { auth } from "../services/firebase";
+import type { ITunesMediaItem } from "../services/itunesService";
+import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
+import type { StoredPlaylist } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const Playlist = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
+  const params = route.params as { songToAdd?: string; mediaToAdd?: string } | undefined;
+  const incomingParam = params?.mediaToAdd ?? params?.songToAdd;
+  const incomingItem = useMemo<ITunesMediaItem | null>(() => {
+    if (!incomingParam) return null;
+    try { return JSON.parse(incomingParam); }
+    catch { return null; }
+  }, [incomingParam]);
 
-  const [playlists, setPlaylists] = useState<any[]>([]);
-  const [incomingSong, setIncomingSong] = useState<any | null>(null);
-  const [songAdded, setSongAdded] = useState<boolean>(false);
+  const [uid, setUid] = useState(auth.currentUser?.uid ?? null);
+  const [playlists, setPlaylists] = useState<StoredPlaylist[]>([]);
+  const [itemAdded, setItemAdded] = useState(false);
 
-  const { songToAdd } = route.params as {
-    songToAdd?: string;
+  useEffect(() => onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null)), []);
+  useEffect(() => {
+    if (uid) loadPlaylists(uid).then(setPlaylists).catch(console.error);
+    else setPlaylists([]);
+  }, [uid]);
+
+  const persist = async (updated: StoredPlaylist[]) => {
+    if (!uid) return Alert.alert("Not signed in", "Please sign in before changing playlists.");
+    await savePlaylists(uid, updated);
+    setPlaylists(updated);
   };
 
-  const parsedSong = songToAdd
-    ? JSON.parse(songToAdd)
-    : null;
-
-  // Set incomingSong when a song is passed to this screen
-  useEffect(() => {
-    if (parsedSong) {
-      setIncomingSong(parsedSong);
-    }
-  }, [songToAdd]);
-
-  // Load playlists from AsyncStorage
-  useEffect(() => {
-    const loadPlaylists = async () => {
-      try {
-        const stored =
-          await AsyncStorage.getItem("playlists");
-
-        if (stored) {
-          setPlaylists(JSON.parse(stored));
-        }
-      } catch (error) {
-        console.error(
-          "Failed to load playlists:",
-          error
-        );
-      }
-    };
-
-    loadPlaylists();
-  }, []);
-
   const deletePlaylist = async (index: number) => {
-    const updatedPlaylists = [...playlists];
+    await persist(playlists.filter((_, playlistIndex) => playlistIndex !== index));
+  };
 
-    updatedPlaylists.splice(index, 1);
+  const addIncomingItem = async (index: number) => {
+    if (!incomingItem) return;
+    if (itemAdded) return Alert.alert("Media already added", "Choose one playlist per visit to this screen.");
+    if (playlists[index].songs.some((item) => item.id === incomingItem.id))
+      return Alert.alert("Already exists", "This media is already in the selected playlist.");
 
-    setPlaylists(updatedPlaylists);
-
-    await AsyncStorage.setItem(
-      "playlists",
-      JSON.stringify(updatedPlaylists)
+    const updated = playlists.map((playlist, playlistIndex) =>
+      playlistIndex === index ? { ...playlist, songs: [...playlist.songs, incomingItem] } : playlist
     );
+    await persist(updated);
+    setItemAdded(true);
+    Alert.alert("Added!", `Added to playlist “${playlists[index].name}”.`);
   };
 
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
-      {/* Header */}
       <View style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("Songs")}
-          style={styles.backButton}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color="black"
-          />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>
-          Playlists
-        </Text>
+        <Text style={styles.headerTitle}>Playlists</Text>
       </View>
 
-      {/* List of Playlists */}
       {playlists.length === 0 ? (
         <View style={styles.centeredContent}>
-          <Text style={styles.emptyText}>
-            No playlists found. Create one from Songs page!
-          </Text>
+          <Text style={styles.emptyText}>No playlists found. Add media and create a playlist first.</Text>
         </View>
       ) : (
-        <FlatList
-          data={playlists}
-          keyExtractor={(item, index) =>
-            index.toString()
-          }
+        <FlatList data={playlists} keyExtractor={(item) => item.id}
           renderItem={({ item, index }) => (
-            <TouchableOpacity
-              style={styles.songCard}
-              onPress={() =>
-                navigation.navigate(
-                  "PlaylistSongs",
-                  {
-                    playlist: JSON.stringify(item),
-                  }
-                )
-              }
-            >
+            <TouchableOpacity style={styles.songCard}
+              onPress={() => navigation.navigate("PlaylistSongs", { playlist: JSON.stringify(item) })}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.playlistName}>
-                  {item.name}
-                </Text>
-
-                <Text style={styles.playlistSongCount}>
-                  {item.songs.length} song(s)
-                </Text>
+                <Text style={styles.playlistName}>{item.name}</Text>
+                <Text style={styles.playlistSongCount}>{item.songs.length} media item(s)</Text>
               </View>
-
-              {/* Plus Icon to Add Song to Playlist */}
-              <TouchableOpacity
-                onPress={async () => {
-                  if (songAdded) {
-                    Alert.alert(
-                      "Song Already Added",
-                      "You can only add the song to one playlist in this session."
-                    );
-                    return;
-                  }
-
-                  if (incomingSong) {
-                    const updatedPlaylists = [
-                      ...playlists,
-                    ];
-
-                    const alreadyExists =
-                      updatedPlaylists[index].songs.some(
-                        (song: any) =>
-                          song.id === incomingSong.id
-                      );
-
-                    if (!alreadyExists) {
-                      updatedPlaylists[index].songs.push(
-                        incomingSong
-                      );
-
-                      await AsyncStorage.setItem(
-                        "playlists",
-                        JSON.stringify(updatedPlaylists)
-                      );
-
-                      setPlaylists(updatedPlaylists);
-                      setSongAdded(true);
-                      setIncomingSong(null);
-
-                      Alert.alert(
-                        "Song Added!",
-                        `Added to playlist "${updatedPlaylists[index].name}"`
-                      );
-                    } else {
-                      Alert.alert(
-                        "Already Exists",
-                        "This song is already in the selected playlist."
-                      );
-                    }
-                  }
-                }}
-              >
-                <Ionicons
-                  name="add-circle"
-                  size={28}
-                  color="#1DB954"
-                />
-              </TouchableOpacity>
-
-              {/* Trash Icon to Delete Playlist */}
-              <TouchableOpacity
-                onPress={() => deletePlaylist(index)}
-              >
-                <Ionicons
-                  name="trash-outline"
-                  size={24}
-                  color="red"
-                />
+              {incomingItem && !itemAdded && (
+                <TouchableOpacity onPress={() => void addIncomingItem(index)}>
+                  <Ionicons name="add-circle" size={28} color="#1DB954" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={() => void deletePlaylist(index)}>
+                <Ionicons name="trash-outline" size={24} color="red" />
               </TouchableOpacity>
             </TouchableOpacity>
           )}

@@ -1,159 +1,77 @@
-
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Linking,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import usePaginatedData from "../hooks/usePaginatedData";
-import { fetchAudiobooks } from "../services/spotifyService";
+import AudioPlayer from "../components/AudioPlayer";
+import { fetchAudiobooks } from "../services/itunesService";
+import type { ITunesMediaItem } from "../services/itunesService";
 import { styles } from "../styles/style";
 
 const Audiobooks = () => {
   const navigation = useNavigation<any>();
+  const [searchQuery, setSearchQuery] = useState("bestsellers");
+  const [audiobooks, setAudiobooks] = useState<ITunesMediaItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeBook, setActiveBook] = useState<ITunesMediaItem | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showFullName] = useState(false);
+  const search = async (term = searchQuery) => {
+    try {
+      setLoading(true);
+      setAudiobooks(await fetchAudiobooks(term.trim() || "bestsellers"));
+    } catch (error) {
+      console.error("Failed to load audiobooks:", error);
+      setAudiobooks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const {
-    data: audiobooks,
-    isFetchingMore,
-    hasMore,
-    fetchData: fetchMoreAudiobooks,
-  } = usePaginatedData(fetchAudiobooks, 50);
-
-  const filteredAudiobooks = audiobooks.filter((item) => {
-    const title = item?.name || "";
-    const publisher = item?.publisher || "";
-
-    return (
-      title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      publisher.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  });
-
-  if (audiobooks.length === 0 && isFetchingMore) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1DB954" />
-      </View>
-    );
-  }
+  useEffect(() => { void search("bestsellers"); }, []);
 
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("AppTabs")}
-          style={styles.backButton}
-        >
+        <TouchableOpacity onPress={() => navigation.navigate("AppTabs")} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-
         <Text style={styles.headerTitle}>Audiobooks</Text>
       </View>
 
       <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Search audiobooks..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-        />
+        <TextInput placeholder="Search audiobooks..." value={searchQuery} onChangeText={setSearchQuery}
+          onSubmitEditing={() => void search()} returnKeyType="search" style={styles.searchInput} />
       </View>
 
-      {filteredAudiobooks.length === 0 ? (
-        <View style={{ padding: 20 }}>
-          <Text
-            style={{
-              textAlign: "center",
-              fontSize: 16,
-              color: "gray",
-            }}
-          >
-            No results found.
-          </Text>
-        </View>
+      {loading ? (
+        <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1DB954" /></View>
+      ) : audiobooks.length === 0 ? (
+        <Text style={{ textAlign: "center", marginTop: 50, color: "gray" }}>No results found.</Text>
       ) : (
-        <FlatList
-          data={filteredAudiobooks}
-          keyExtractor={(item) => item.id}
+        <FlatList data={audiobooks} keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <View>
-              <TouchableOpacity
-                style={styles.songCard}
-                onPress={() =>
-                  navigation.navigate("AudiobookChapters", {
-                    audiobook: JSON.stringify(item),
-                  })
-                }
-              >
-                <Image
-                  source={{ uri: item.images?.[0]?.url }}
-                  style={styles.songImage}
-                />
-
-                <View style={styles.songDetails}>
-                  <Text style={styles.songTitle}>
-                    {showFullName
-                      ? item.name
-                      : item.name.slice(0, 25) +
-                        (item.name.length > 25 ? "..." : "")}
-                  </Text>
-
-                  <Text style={styles.songArtist}>
-                    {showFullName
-                      ? item.publisher
-                      : item.publisher.slice(0, 25) +
-                        (item.publisher.length > 25 ? "..." : "")}
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() =>
-                    Linking.openURL(item.external_urls.spotify)
-                  }
-                >
-                  <Ionicons
-                    name="play-circle"
-                    size={28}
-                    color="#1DB954"
-                  />
+            <TouchableOpacity style={styles.songCard}
+              onPress={() => navigation.navigate("AudiobookChapters", { audiobook: JSON.stringify(item) })}>
+              {item.artworkUrl && <Image source={{ uri: item.artworkUrl }} style={styles.songImage} />}
+              <View style={styles.songDetails}>
+                <Text style={styles.songTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.songArtist} numberOfLines={1}>{item.creator}</Text>
+              </View>
+              {item.audioUrl && (
+                <TouchableOpacity onPress={(event) => { event.stopPropagation(); setActiveBook(item); }}>
+                  <Ionicons name="play-circle" size={28} color="#1DB954" />
                 </TouchableOpacity>
-              </TouchableOpacity>
-            </View>
+              )}
+              <Ionicons name="chevron-forward" size={22} color="gray" />
+            </TouchableOpacity>
           )}
-          onEndReached={
-            hasMore ? fetchMoreAudiobooks : undefined
-          }
-          onEndReachedThreshold={0.1}
-          ListFooterComponent={
-            isFetchingMore ? (
-              <ActivityIndicator
-                size="small"
-                color="#1DB954"
-              />
-            ) : !hasMore ? (
-              <Text
-                style={{
-                  textAlign: "center",
-                  padding: 10,
-                  color: "gray",
-                }}
-              >
-                No more audiobooks
-              </Text>
-            ) : null
-          }
         />
+      )}
+
+      {activeBook?.audioUrl && (
+        <AudioPlayer previewUrl={activeBook.audioUrl} songName={activeBook.title}
+          artistName={activeBook.creator} onClose={() => setActiveBook(null)}
+          onNext={() => {}} onPrevious={() => {}} disableNext disablePrevious />
       )}
     </SafeAreaView>
   );

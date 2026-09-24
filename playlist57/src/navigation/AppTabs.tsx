@@ -1,9 +1,7 @@
-import TabNavigator from './TabNavigator';
+import TabNavigator from "./TabNavigator";
 
 const AppTabs = () => {
-  return (
-      <TabNavigator />
-  );
+  return <TabNavigator />;
 };
 
 export default AppTabs;

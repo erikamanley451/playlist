@@ -16,7 +16,6 @@ import Songs from "../screens/songs";
 import Videos from "../screens/videos";
 
 import Categories from "../screens/categories";
-import CategoryPlaylists from "../screens/categories/[id]";
 
 import Playlist from "../screens/playlist";
 import SearchResults from "../screens/search";
@@ -79,11 +78,6 @@ export default function AppNavigator() {
           component={Categories}
         />
 
-        <Stack.Screen
-          name="CategoryPlaylists"
-          component={CategoryPlaylists}
-        />
-
         {/* Podcast details */}
         <Stack.Screen
           name="PodcastEpisodes"
@@ -117,7 +111,6 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
-
 
 
 

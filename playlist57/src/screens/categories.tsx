@@ -1,94 +1,38 @@
-
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { useEffect, useState } from "react";
-import {
-    ActivityIndicator,
-    FlatList,
-    Image,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
+import { FlatList, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { fetchCategories } from "../services/spotifyService";
 import { styles } from "../styles/style";
 
-// Overview: lists categories using fetchCategories from spotifyService.ts.
-// Clicking a category leads to a page that lists playlists for that category.
+// The iTunes Search API has no category-list endpoint, so these are search terms.
+const categories = [
+  { name: "Pop", icon: "musical-notes", searchTerm: "pop" },
+  { name: "Hip-Hop / Rap", icon: "mic", searchTerm: "hip hop" },
+  { name: "Rock", icon: "radio", searchTerm: "rock" },
+  { name: "R&B / Soul", icon: "heart", searchTerm: "r&b soul" },
+  { name: "Country", icon: "musical-note", searchTerm: "country" },
+  { name: "Jazz", icon: "headset", searchTerm: "jazz" },
+  { name: "Classical", icon: "library", searchTerm: "classical" },
+  { name: "Electronic", icon: "pulse", searchTerm: "electronic" },
+];
 
 const Categories = () => {
   const navigation = useNavigation<any>();
-
-  const [categories, setCategories] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function loadCategories() {
-      try {
-        const data = await fetchCategories();
-        setCategories(data);
-      } catch (error) {
-        console.error("Failed to load categories:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadCategories();
-  }, []);
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#1DB954" />
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate("AppTabs")}
-          style={styles.backButton}
-        >
-          <Ionicons
-            name="arrow-back"
-            size={24}
-            color="black"
-          />
+        <TouchableOpacity onPress={() => navigation.navigate("AppTabs")} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-
-        <Text style={styles.headerTitle}>
-          Categories
-        </Text>
+        <Text style={styles.headerTitle}>Categories</Text>
       </View>
-
-      <FlatList
-        data={categories}
-        keyExtractor={(item) => item.name}
+      <FlatList data={categories} keyExtractor={(item) => item.name}
         renderItem={({ item }) => (
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate("CategoryPlaylists", {
-                id: item.name,
-              })
-            }
-          >
+          <TouchableOpacity onPress={() => navigation.navigate("Songs", { initialQuery: item.searchTerm })}>
             <View style={styles.songCard}>
-              <Image
-                source={{
-                  uri: item.icons?.[0]?.url,
-                }}
-                style={styles.songImage}
-              />
-
-              <View style={styles.songDetails}>
-                <Text style={styles.songTitle}>
-                  {item.name}
-                </Text>
-              </View>
+              <Ionicons name={item.icon as any} size={42} color="#1DB954" style={styles.songImage} />
+              <View style={styles.songDetails}><Text style={styles.songTitle}>{item.name}</Text></View>
+              <Ionicons name="chevron-forward" size={24} color="#1DB954" />
             </View>
           </TouchableOpacity>
         )}
