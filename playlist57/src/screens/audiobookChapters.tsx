@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { Image, Linking, Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -8,13 +8,14 @@ import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import { createPlaylist, loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import type { StoredPlaylist } from "../services/playlistStorage";
+import { createPlaylist, loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const AudiobookChapters = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
+  const isFocused = useIsFocused();
   const { audiobook } = route.params as { audiobook: string };
   const book: ITunesMediaItem = JSON.parse(audiobook);
 
@@ -32,6 +33,9 @@ const AudiobookChapters = () => {
     if (uid) loadPlaylists(uid).then(setPlaylists).catch(console.error);
     else setPlaylists([]);
   }, [uid]);
+  useEffect(() => {
+    if (!isFocused) setPlaying(false);
+  }, [isFocused]);
 
   const persist = async (updated: StoredPlaylist[]) => {
     if (!uid) {
@@ -164,7 +168,7 @@ const AudiobookChapters = () => {
         </View></View>
       </Modal>
 
-      {playing && book.audioUrl && (
+      {isFocused && playing && book.audioUrl && (
         <AudioPlayer previewUrl={book.audioUrl} songName={book.title} artistName={book.creator}
           onClose={() => setPlaying(false)} onNext={() => {}} onPrevious={() => {}}
           disableNext disablePrevious />

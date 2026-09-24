@@ -13,6 +13,15 @@ import {
 
 const { width } = Dimensions.get('window');
 
+type ActivePlayback = {
+  owner: symbol;
+  stop: () => void;
+};
+
+// AudioPlayer can be mounted on more than one navigation screen at a time.
+// Keep one shared owner so starting a new player always silences the old one.
+let activePlayback: ActivePlayback | null = null;
+
 type AudioPlayerProps = {
   previewUrl: string;
   songName: string;
@@ -38,6 +47,7 @@ const AudioPlayer = ({
   const [progress, setProgress] = useState(0);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
+  const owner = useRef(Symbol('AudioPlayer')).current;
 
   const isVideo =
     previewUrl.endsWith('.mp4') || previewUrl.includes('video');
@@ -45,9 +55,10 @@ const AudioPlayer = ({
   /*
    * Audio player
    */
-  const audioPlayer = useAudioPlayer(
-    isVideo ? null : previewUrl
-  );
+  // Create one native audio player for this component. Passing previewUrl
+  // directly to useAudioPlayer can release and recreate the native object
+  // during a skip, leaving button handlers with an invalid object.
+  const audioPlayer = useAudioPlayer(null);
 
   const audioStatus = useAudioPlayerStatus(audioPlayer);
 
@@ -64,6 +75,26 @@ const AudioPlayer = ({
   const isPlaying = isVideo
     ? videoPlayer.playing
     : audioStatus.playing;
+
+  const stopPlayback = () => {
+    try {
+      if (isVideo) videoPlayer.pause();
+      else audioPlayer.pause();
+    } catch {
+      // The native player may already have been released during unmounting.
+    }
+  };
+
+  const claimPlayback = () => {
+    if (activePlayback?.owner !== owner) {
+      activePlayback?.stop();
+      activePlayback = { owner, stop: stopPlayback };
+    }
+  };
+
+  const releasePlayback = () => {
+    if (activePlayback?.owner === owner) activePlayback = null;
+  };
 
   /*
    * Audio progress
@@ -99,15 +130,15 @@ const AudioPlayer = ({
     if (isVideo) {
       setExpanded(true);
     } else {
+      audioPlayer.replace(previewUrl);
+      claimPlayback();
       audioPlayer.play();
     }
 
     return () => {
-      if (isVideo) {
-        videoPlayer.pause();
-      } else {
-        audioPlayer.pause();
-      }
+      // useAudioPlayer/useVideoPlayer release their native objects on unmount.
+      // Calling pause here can run after that release and throw NotFoundException.
+      releasePlayback();
     };
   }, [previewUrl]);
 
@@ -119,19 +150,29 @@ const AudioPlayer = ({
       if (isVideo) {
         if (videoPlayer.playing) {
           videoPlayer.pause();
+          releasePlayback();
         } else {
+          claimPlayback();
           videoPlayer.play();
         }
       } else {
         if (audioStatus.playing) {
           audioPlayer.pause();
+          releasePlayback();
         } else {
+          claimPlayback();
           audioPlayer.play();
         }
       }
     } catch (error) {
       console.error('Play/Pause error:', error);
     }
+  };
+
+  const handleClose = () => {
+    stopPlayback();
+    releasePlayback();
+    onClose();
   };
 
   return (
@@ -142,7 +183,7 @@ const AudioPlayer = ({
       ]}
     >
       <View style={styles.headerRow}>
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={handleClose} hitSlop={12}>
           <Ionicons
             name="close"
             size={24}
