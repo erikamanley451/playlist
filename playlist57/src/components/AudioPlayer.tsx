@@ -43,7 +43,6 @@ const AudioPlayer = ({
   disableNext = false,
   disablePrevious = false,
 }: AudioPlayerProps) => {
-  const [expanded, setExpanded] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -127,9 +126,7 @@ const AudioPlayer = ({
       return;
     }
 
-    if (isVideo) {
-      setExpanded(true);
-    } else {
+    if (!isVideo) {
       audioPlayer.replace(previewUrl);
       claimPlayback();
       audioPlayer.play();
@@ -179,7 +176,7 @@ const AudioPlayer = ({
     <Animated.View
       style={[
         styles.container,
-        expanded && styles.expanded,
+        isVideo && styles.expanded,
       ]}
     >
       <View style={styles.headerRow}>
@@ -207,19 +204,10 @@ const AudioPlayer = ({
           </Text>
         </View>
 
-        <TouchableOpacity
-          style={styles.expandToggle}
-          onPress={() => setExpanded(!expanded)}
-        >
-          <Ionicons
-            name={expanded ? 'chevron-down' : 'chevron-up'}
-            size={24}
-            color="white"
-          />
-        </TouchableOpacity>
+        <View style={styles.headerSpacer} />
       </View>
 
-      {expanded && isVideo && (
+      {isVideo && (
         <VideoView
           player={videoPlayer}
           style={styles.videoPlayer}
@@ -323,8 +311,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  expandToggle: {
-    padding: 4,
+  headerSpacer: {
+    width: 32,
   },
 
   controls: {
