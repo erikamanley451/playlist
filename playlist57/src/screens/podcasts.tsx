@@ -16,18 +16,18 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import type { ITunesMediaItem } from "../services/itunesService";
 import {
   fetchPodcasts,
-  fetchPodcastsByGenre,
   fetchTopPodcasts,
 } from "../services/itunesService";
 import { styles } from "../styles/style";
 
-const PODCAST_GENRES = [
-  { label: "Comedy", genreId: 1303 },
-  { label: "Technology", genreId: 1318 },
-  { label: "Sports", genreId: 1545 },
-  { label: "Health & Fitness", genreId: 1512 },
-  { label: "Business", genreId: 1321 },
-  { label: "News", genreId: 1489 },
+const PODCAST_CATEGORIES = [
+  "Comedy",
+  "Fitness",
+  "Technology",
+  "Business",
+  "True Crime",
+  "Sports",
+  "News",
 ] as const;
 
 const Podcasts = () => {
@@ -77,16 +77,16 @@ const Podcasts = () => {
     void loadTopShows();
   };
 
-  const selectGenre = async (label: string, genreId: number) => {
+  const selectCategory = async (category: string) => {
     setSearchQuery("");
     setFilterVisible(false);
-    setSelectedFilter(label);
+    setSelectedFilter(category);
 
     try {
       setLoading(true);
-      setPodcasts(await fetchPodcastsByGenre(genreId));
+      setPodcasts(await fetchPodcasts(category));
     } catch (error) {
-      console.error(`Failed to load ${label} podcasts:`, error);
+      console.error(`Failed to load ${category} podcasts:`, error);
       setPodcasts([]);
     } finally {
       setLoading(false);
@@ -184,12 +184,12 @@ const Podcasts = () => {
               onPress={selectTopShows}
             />
 
-            {PODCAST_GENRES.map(({ label, genreId }) => (
+            {PODCAST_CATEGORIES.map((category) => (
               <FilterOption
-                key={genreId}
-                label={label}
-                selected={selectedFilter === label}
-                onPress={() => void selectGenre(label, genreId)}
+                key={category}
+                label={category}
+                selected={selectedFilter === category}
+                onPress={() => void selectCategory(category)}
               />
             ))}
 

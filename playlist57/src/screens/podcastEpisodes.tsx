@@ -119,10 +119,18 @@ const PodcastEpisodes = () => {
 
   const description = show.description || "Podcast episodes from the iTunes Search API.";
 
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate("Podcasts");
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity onPress={() => navigation.navigate("Podcasts")} style={styles.backButton}>
+        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{show.title}</Text>
