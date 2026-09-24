@@ -18,12 +18,10 @@ export type ITunesMediaItem = {
 };
 
 const SEARCH_URL = "https://itunes.apple.com/search";
-const TOP_SONGS_CACHE_MS = 10 * 60 * 1000;
+const CACHE_MS = 10 * 60 * 1000;
 
-let topSongsCache: {
-  songs: ITunesMediaItem[];
-  savedAt: number;
-} | null = null;
+let topSongsCache: { songs: ITunesMediaItem[]; savedAt: number } | null = null;
+let topPodcastsCache: { podcasts: ITunesMediaItem[]; savedAt: number } | null = null;
 
 const getResults = (data: any): any[] =>
   Array.isArray(data?.results) ? data.results : [];
@@ -34,15 +32,9 @@ const request = async (params: Record<string, string | number>) => {
     limit: 50,
     ...params,
   };
-  const queryParts: string[] = [];
-
-  for (const key in allParams) {
-    queryParts.push(
-      `${key}=${encodeURIComponent(String(allParams[key]))}`
-    );
-  }
-
-  const query = queryParts.join("&");
+  const query = Object.entries(allParams)
+    .map(([key, value]) => `${key}=${encodeURIComponent(String(value))}`)
+    .join("&");
 
   const response = await fetch(`${SEARCH_URL}?${query}`);
   if (!response.ok) throw new Error(`iTunes request failed: ${response.status}`);
@@ -66,19 +58,31 @@ const normalizeSong = (item: any): ITunesMediaItem => ({
   releaseDate: item.releaseDate ?? null,
 });
 
+const normalizePodcast = (item: any): ITunesMediaItem => ({
+  id: String(item.collectionId),
+  mediaType: "podcast",
+  title: item.collectionName ?? "Untitled Podcast",
+  creator: item.artistName ?? "Unknown Publisher",
+  artworkUrl: largerArtwork(item.artworkUrl600 ?? item.artworkUrl100),
+  audioUrl: null,
+  externalUrl: item.collectionViewUrl ?? null,
+  description: item.genres?.join(" • ") ?? "",
+  durationMs: null,
+  collectionId: String(item.collectionId),
+  feedUrl: item.feedUrl ?? null,
+  episodeCount: item.trackCount ?? 0,
+  releaseDate: item.releaseDate ?? null,
+});
+
 export const fetchSongs = async (term: string): Promise<ITunesMediaItem[]> => {
   const cleanTerm = term.trim();
   if (!cleanTerm) return [];
-
   const data = await request({ term: cleanTerm, media: "music", entity: "song" });
-  return getResults(data).map((item: any) => normalizeSong(item));
+  return getResults(data).map(normalizeSong);
 };
 
 export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
-  if (
-    topSongsCache &&
-    Date.now() - topSongsCache.savedAt < TOP_SONGS_CACHE_MS
-  ) {
+  if (topSongsCache && Date.now() - topSongsCache.savedAt < CACHE_MS) {
     return topSongsCache.songs;
   }
 
@@ -88,19 +92,12 @@ export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
 
   for (const limit of chartLimits) {
     try {
-      const chartResponse = await fetch(
+      const response = await fetch(
         `https://rss.marketingtools.apple.com/api/v2/us/music/most-played/${limit}/songs.json`
       );
-
-      if (!chartResponse.ok) {
-        throw new Error(`Apple chart request failed: ${chartResponse.status}`);
-      }
-
-      const chartData = await chartResponse.json();
-      chartResults = Array.isArray(chartData?.feed?.results)
-        ? chartData.feed.results
-        : [];
-
+      if (!response.ok) throw new Error(`Apple chart request failed: ${response.status}`);
+      const data = await response.json();
+      chartResults = Array.isArray(data?.feed?.results) ? data.feed.results : [];
       if (chartResults.length > 0) break;
     } catch (error) {
       lastChartError = error;
@@ -110,80 +107,52 @@ export const fetchTopSongs = async (): Promise<ITunesMediaItem[]> => {
 
   if (chartResults.length === 0) {
     if (topSongsCache) return topSongsCache.songs;
-
-    console.warn(
-      "Apple charts are unavailable; using iTunes search results.",
-      lastChartError
-    );
+    console.warn("Apple charts are unavailable; using iTunes search results.", lastChartError);
     return fetchSongs("popular hits");
   }
 
   const ids = chartResults
     .map((item: any) => item?.id)
     .filter((id: any) => id !== undefined && id !== null)
-    .map((id: any) => String(id));
-
-  if (ids.length === 0) return [];
-
-  // Use small batches so the lookup URL remains reliable on mobile networks.
-  const batches: string[][] = [];
-  for (let index = 0; index < ids.length; index += 25) {
-    batches.push(ids.slice(index, index + 25));
-  }
+    .map(String);
 
   const songsById: Record<string, ITunesMediaItem> = {};
-
-  // Process batches one at a time. This is more reliable in React Native and
-  // prevents one malformed lookup response from discarding the whole chart.
-  for (const batch of batches) {
+  for (let index = 0; index < ids.length; index += 25) {
+    const batch = ids.slice(index, index + 25);
     try {
       const response = await fetch(
         `https://itunes.apple.com/lookup?id=${batch.join(",")}&entity=song&country=US`
       );
-
-      if (!response.ok) {
-        throw new Error(`iTunes lookup failed: ${response.status}`);
-      }
-
+      if (!response.ok) throw new Error(`iTunes lookup failed: ${response.status}`);
       const data = await response.json();
       getResults(data)
-      .filter((item: any) => item.wrapperType === "track" && item.trackId)
-      .forEach((item: any) => {
-        songsById[String(item.trackId)] = normalizeSong(item);
-      });
+        .filter((item: any) => item.wrapperType === "track" && item.trackId)
+        .forEach((item: any) => {
+          songsById[String(item.trackId)] = normalizeSong(item);
+        });
     } catch (error) {
       console.warn("A top-song preview batch could not be loaded:", error);
     }
   }
 
-  // Preserve Apple's ranking. When lookup enrichment fails, keep the chart
-  // metadata and simply omit the play button by setting audioUrl to null.
-  const topSongs = chartResults.map((chartItem: any): ITunesMediaItem => {
-    const id = String(chartItem?.id ?? "");
-    const enrichedSong = songsById[id];
-
-    if (enrichedSong) return enrichedSong;
-
-    return {
+  const songs = chartResults.map((item: any): ITunesMediaItem => {
+    const id = String(item?.id ?? "");
+    return songsById[id] ?? {
       id,
       mediaType: "song",
-      title: chartItem?.name ?? "Untitled",
-      creator: chartItem?.artistName ?? "Unknown Artist",
-      artworkUrl: largerArtwork(chartItem?.artworkUrl100),
+      title: item?.name ?? "Untitled",
+      creator: item?.artistName ?? "Unknown Artist",
+      artworkUrl: largerArtwork(item?.artworkUrl100),
       audioUrl: null,
-      externalUrl: chartItem?.url ?? null,
+      externalUrl: item?.url ?? null,
       description: "",
       durationMs: null,
-      releaseDate: chartItem?.releaseDate ?? null,
+      releaseDate: item?.releaseDate ?? null,
     };
   });
 
-  topSongsCache = {
-    songs: topSongs,
-    savedAt: Date.now(),
-  };
-
-  return topSongs;
+  topSongsCache = { songs, savedAt: Date.now() };
+  return songs;
 };
 
 export const fetchAudiobooks = async (term: string): Promise<ITunesMediaItem[]> => {
@@ -204,22 +173,64 @@ export const fetchAudiobooks = async (term: string): Promise<ITunesMediaItem[]> 
 };
 
 export const fetchPodcasts = async (term: string): Promise<ITunesMediaItem[]> => {
-  const data = await request({ term: term || "popular", media: "podcast", entity: "podcast" });
-  return getResults(data).map((item: any) => ({
-    id: String(item.collectionId),
-    mediaType: "podcast" as const,
-    title: item.collectionName ?? "Untitled Podcast",
-    creator: item.artistName ?? "Unknown Publisher",
-    artworkUrl: largerArtwork(item.artworkUrl600 ?? item.artworkUrl100),
-    audioUrl: null,
-    externalUrl: item.collectionViewUrl ?? null,
-    description: item.genres?.join(" • ") ?? "",
-    durationMs: null,
-    collectionId: String(item.collectionId),
-    feedUrl: item.feedUrl ?? null,
-    episodeCount: item.trackCount ?? 0,
-    releaseDate: item.releaseDate ?? null,
-  }));
+  const cleanTerm = term.trim();
+  if (!cleanTerm) return [];
+  const data = await request({ term: cleanTerm, media: "podcast", entity: "podcast" });
+  return getResults(data).map(normalizePodcast);
+};
+
+export const fetchPodcastsByGenre = async (
+  genreId: number
+): Promise<ITunesMediaItem[]> => {
+  const data = await request({
+    term: genreId,
+    media: "podcast",
+    entity: "podcast",
+    attribute: "genreIndex",
+  });
+  return getResults(data).map(normalizePodcast);
+};
+
+export const fetchTopPodcasts = async (): Promise<ITunesMediaItem[]> => {
+  if (topPodcastsCache && Date.now() - topPodcastsCache.savedAt < CACHE_MS) {
+    return topPodcastsCache.podcasts;
+  }
+
+  try {
+    const response = await fetch(
+      "https://rss.marketingtools.apple.com/api/v2/us/podcasts/top/50/podcasts.json"
+    );
+    if (!response.ok) {
+      throw new Error(`Apple podcast chart failed: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const chartResults = Array.isArray(data?.feed?.results) ? data.feed.results : [];
+    const podcasts = chartResults.map((item: any): ITunesMediaItem => ({
+      id: String(item.id),
+      mediaType: "podcast",
+      title: item.name ?? "Untitled Podcast",
+      creator: item.artistName ?? "Unknown Publisher",
+      artworkUrl: largerArtwork(item.artworkUrl100),
+      audioUrl: null,
+      externalUrl: item.url ?? null,
+      description: Array.isArray(item.genres)
+        ? item.genres.map((genre: any) => genre.name).join(" • ")
+        : "",
+      durationMs: null,
+      collectionId: String(item.id),
+      feedUrl: null,
+      episodeCount: 0,
+      releaseDate: null,
+    }));
+
+    topPodcastsCache = { podcasts, savedAt: Date.now() };
+    return podcasts;
+  } catch (error) {
+    console.warn("Top Shows could not be loaded:", error);
+    if (topPodcastsCache) return topPodcastsCache.podcasts;
+    return fetchPodcasts("podcast");
+  }
 };
 
 export const fetchPodcastEpisodes = async (
@@ -233,15 +244,20 @@ export const fetchPodcastEpisodes = async (
   });
 
   return getResults(data)
-    .filter((item: any) => String(item.collectionId) === String(podcast.collectionId ?? podcast.id))
+    .filter(
+      (item: any) =>
+        String(item.collectionId) === String(podcast.collectionId ?? podcast.id)
+    )
     .map((item: any) => ({
       id: String(item.episodeGuid ?? item.trackId),
       mediaType: "podcastEpisode" as const,
       title: item.trackName ?? "Untitled Episode",
       creator: item.collectionName ?? podcast.creator,
-      artworkUrl: largerArtwork(item.artworkUrl600 ?? item.artworkUrl100) ?? podcast.artworkUrl,
+      artworkUrl:
+        largerArtwork(item.artworkUrl600 ?? item.artworkUrl100) ?? podcast.artworkUrl,
       audioUrl: item.episodeUrl ?? item.previewUrl ?? null,
-      externalUrl: item.episodeContentLink ?? item.trackViewUrl ?? podcast.externalUrl,
+      externalUrl:
+        item.episodeContentLink ?? item.trackViewUrl ?? podcast.externalUrl,
       description: item.description ?? item.shortDescription ?? "",
       durationMs: item.trackTimeMillis ?? null,
       collectionId: String(item.collectionId),
