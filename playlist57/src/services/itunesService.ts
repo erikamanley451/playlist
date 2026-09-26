@@ -22,6 +22,7 @@ const CACHE_MS = 10 * 60 * 1000;
 
 let topSongsCache: { songs: ITunesMediaItem[]; savedAt: number } | null = null;
 let topPodcastsCache: { podcasts: ITunesMediaItem[]; savedAt: number } | null = null;
+let podcastChartCache: { results: any[]; savedAt: number } | null = null;
 
 const getResults = (data: any): any[] =>
   Array.isArray(data?.results) ? data.results : [];
@@ -73,6 +74,45 @@ const normalizePodcast = (item: any): ITunesMediaItem => ({
   episodeCount: item.trackCount ?? 0,
   releaseDate: item.releaseDate ?? null,
 });
+
+const normalizeChartPodcast = (item: any): ITunesMediaItem => ({
+  id: String(item.id),
+  mediaType: "podcast",
+  title: item.name ?? "Untitled Podcast",
+  creator: item.artistName ?? "Unknown Publisher",
+  artworkUrl: largerArtwork(item.artworkUrl100),
+  audioUrl: null,
+  externalUrl: item.url ?? null,
+  description: Array.isArray(item.genres)
+    ? item.genres.map((genre: any) => genre.name).join(" • ")
+    : "",
+  durationMs: null,
+  collectionId: String(item.id),
+  feedUrl: null,
+  episodeCount: 0,
+  releaseDate: null,
+});
+
+const fetchPodcastChart = async (): Promise<any[]> => {
+  if (
+    podcastChartCache &&
+    Date.now() - podcastChartCache.savedAt < CACHE_MS
+  ) {
+    return podcastChartCache.results;
+  }
+
+  const response = await fetch(
+    "https://rss.marketingtools.apple.com/api/v2/us/podcasts/top/100/podcasts.json"
+  );
+  if (!response.ok) {
+    throw new Error(`Apple podcast chart failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const results = Array.isArray(data?.feed?.results) ? data.feed.results : [];
+  podcastChartCache = { results, savedAt: Date.now() };
+  return results;
+};
 
 export const fetchSongs = async (term: string): Promise<ITunesMediaItem[]> => {
   const cleanTerm = term.trim();
@@ -179,50 +219,14 @@ export const fetchPodcasts = async (term: string): Promise<ITunesMediaItem[]> =>
   return getResults(data).map(normalizePodcast);
 };
 
-export const fetchPodcastsByGenre = async (
-  genreId: number
-): Promise<ITunesMediaItem[]> => {
-  const data = await request({
-    term: genreId,
-    media: "podcast",
-    entity: "podcast",
-    attribute: "genreIndex",
-  });
-  return getResults(data).map(normalizePodcast);
-};
-
 export const fetchTopPodcasts = async (): Promise<ITunesMediaItem[]> => {
   if (topPodcastsCache && Date.now() - topPodcastsCache.savedAt < CACHE_MS) {
     return topPodcastsCache.podcasts;
   }
 
   try {
-    const response = await fetch(
-      "https://rss.marketingtools.apple.com/api/v2/us/podcasts/top/50/podcasts.json"
-    );
-    if (!response.ok) {
-      throw new Error(`Apple podcast chart failed: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const chartResults = Array.isArray(data?.feed?.results) ? data.feed.results : [];
-    const podcasts = chartResults.map((item: any): ITunesMediaItem => ({
-      id: String(item.id),
-      mediaType: "podcast",
-      title: item.name ?? "Untitled Podcast",
-      creator: item.artistName ?? "Unknown Publisher",
-      artworkUrl: largerArtwork(item.artworkUrl100),
-      audioUrl: null,
-      externalUrl: item.url ?? null,
-      description: Array.isArray(item.genres)
-        ? item.genres.map((genre: any) => genre.name).join(" • ")
-        : "",
-      durationMs: null,
-      collectionId: String(item.id),
-      feedUrl: null,
-      episodeCount: 0,
-      releaseDate: null,
-    }));
+    const chartResults = await fetchPodcastChart();
+    const podcasts = chartResults.slice(0, 50).map(normalizeChartPodcast);
 
     topPodcastsCache = { podcasts, savedAt: Date.now() };
     return podcasts;

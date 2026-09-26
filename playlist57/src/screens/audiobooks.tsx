@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -10,6 +10,7 @@ import { styles } from "../styles/style";
 
 const Audiobooks = () => {
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
   const [searchQuery, setSearchQuery] = useState("bestsellers");
   const [audiobooks, setAudiobooks] = useState<ITunesMediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,6 +29,9 @@ const Audiobooks = () => {
   };
 
   useEffect(() => { void search("bestsellers"); }, []);
+  useEffect(() => {
+    if (!isFocused) setActiveBook(null);
+  }, [isFocused]);
 
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
@@ -49,6 +53,7 @@ const Audiobooks = () => {
         <Text style={{ textAlign: "center", marginTop: 50, color: "gray" }}>No results found.</Text>
       ) : (
         <FlatList data={audiobooks} keyExtractor={(item) => item.id}
+          contentContainerStyle={activeBook ? { paddingBottom: 190 } : undefined}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.songCard}
               onPress={() => navigation.navigate("AudiobookChapters", { audiobook: JSON.stringify(item) })}>
@@ -68,10 +73,13 @@ const Audiobooks = () => {
         />
       )}
 
-      {activeBook?.audioUrl && (
+      {isFocused && activeBook?.audioUrl && (
         <AudioPlayer previewUrl={activeBook.audioUrl} songName={activeBook.title}
           artistName={activeBook.creator} onClose={() => setActiveBook(null)}
-          onNext={() => {}} onPrevious={() => {}} disableNext disablePrevious />
+          onNext={() => {}} onPrevious={() => {}} disableNext disablePrevious
+          sourceAttribution="Preview provided by Apple"
+          sourceLabel="Apple Books"
+          sourceUrl={activeBook.externalUrl} />
       )}
     </SafeAreaView>
   );

@@ -8,8 +8,8 @@ import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import type { StoredPlaylist } from "../services/playlistStorage";
 import { createPlaylist, loadPlaylists, savePlaylists } from "../services/playlistStorage";
+import type { StoredPlaylist } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const AudiobookChapters = () => {
@@ -171,7 +171,8 @@ const AudiobookChapters = () => {
       {isFocused && playing && book.audioUrl && (
         <AudioPlayer previewUrl={book.audioUrl} songName={book.title} artistName={book.creator}
           onClose={() => setPlaying(false)} onNext={() => {}} onPrevious={() => {}}
-          disableNext disablePrevious />
+          disableNext disablePrevious sourceAttribution="Preview provided by Apple"
+          sourceLabel="Apple Books" sourceUrl={book.externalUrl} />
       )}
     </SafeAreaView>
   );

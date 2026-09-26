@@ -5,11 +5,13 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import YoutubePlayer from 'react-native-youtube-iframe';
 
 const { width } = Dimensions.get('window');
 
@@ -23,7 +25,8 @@ type ActivePlayback = {
 let activePlayback: ActivePlayback | null = null;
 
 type AudioPlayerProps = {
-  previewUrl: string;
+  previewUrl?: string;
+  youtubeVideoId?: string | null;
   songName: string;
   artistName: string;
   onClose: () => void;
@@ -31,10 +34,14 @@ type AudioPlayerProps = {
   onPrevious: () => void;
   disableNext?: boolean;
   disablePrevious?: boolean;
+  sourceAttribution?: string;
+  sourceLabel?: string;
+  sourceUrl?: string | null;
 };
 
 const AudioPlayer = ({
-  previewUrl,
+  previewUrl = '',
+  youtubeVideoId,
   songName,
   artistName,
   onClose,
@@ -42,14 +49,21 @@ const AudioPlayer = ({
   onPrevious,
   disableNext = false,
   disablePrevious = false,
+  sourceAttribution,
+  sourceLabel,
+  sourceUrl,
 }: AudioPlayerProps) => {
   const [progress, setProgress] = useState(0);
+  const [videoExpanded, setVideoExpanded] = useState(false);
+  const [youtubePlaying, setYoutubePlaying] = useState(false);
 
   const progressAnim = useRef(new Animated.Value(0)).current;
   const owner = useRef(Symbol('AudioPlayer')).current;
 
-  const isVideo =
-    previewUrl.endsWith('.mp4') || previewUrl.includes('video');
+  const isYouTube = Boolean(youtubeVideoId);
+  const isDirectVideo =
+    !isYouTube &&
+    (previewUrl.endsWith('.mp4') || previewUrl.includes('video'));
 
   /*
    * Audio player
@@ -65,19 +79,22 @@ const AudioPlayer = ({
    * Video player
    */
   const videoPlayer = useVideoPlayer(
-    isVideo ? previewUrl : null,
+    isDirectVideo ? previewUrl : null,
     (player) => {
       player.loop = false;
     }
   );
 
-  const isPlaying = isVideo
-    ? videoPlayer.playing
-    : audioStatus.playing;
+  const isPlaying = isYouTube
+    ? youtubePlaying
+    : isDirectVideo
+      ? videoPlayer.playing
+      : audioStatus.playing;
 
   const stopPlayback = () => {
     try {
-      if (isVideo) videoPlayer.pause();
+      if (isYouTube) setYoutubePlaying(false);
+      else if (isDirectVideo) videoPlayer.pause();
       else audioPlayer.pause();
     } catch {
       // The native player may already have been released during unmounting.
@@ -99,7 +116,7 @@ const AudioPlayer = ({
    * Audio progress
    */
   useEffect(() => {
-    if (!isVideo && audioStatus.duration > 0) {
+    if (!isYouTube && !isDirectVideo && audioStatus.duration > 0) {
       const position =
         audioStatus.currentTime / audioStatus.duration;
 
@@ -114,7 +131,8 @@ const AudioPlayer = ({
   }, [
     audioStatus.currentTime,
     audioStatus.duration,
-    isVideo,
+    isDirectVideo,
+    isYouTube,
     progressAnim,
   ]);
 
@@ -122,29 +140,48 @@ const AudioPlayer = ({
    * Automatically start audio when previewUrl changes.
    */
   useEffect(() => {
-    if (!previewUrl) {
-      return;
+    // The native audio object is still valid while props change. Stop its
+    // previous source before switching to a YouTube or direct-video item.
+    try {
+      audioPlayer.pause();
+    } catch {
+      // There may not be a loaded audio source yet.
     }
 
-    if (!isVideo) {
-      audioPlayer.replace(previewUrl);
-      claimPlayback();
-      audioPlayer.play();
-    }
+    releasePlayback();
+
+    if (!previewUrl || isYouTube || isDirectVideo) return;
+
+    audioPlayer.replace(previewUrl);
+    claimPlayback();
+    audioPlayer.play();
 
     return () => {
       // useAudioPlayer/useVideoPlayer release their native objects on unmount.
       // Calling pause here can run after that release and throw NotFoundException.
       releasePlayback();
     };
-  }, [previewUrl]);
+  }, [previewUrl, isDirectVideo, isYouTube]);
+
+  useEffect(() => {
+    // Start each YouTube item collapsed. The outer green button reveals the
+    // embedded player; YouTube's own controls then handle playback.
+    setVideoExpanded(false);
+    setYoutubePlaying(false);
+  }, [youtubeVideoId]);
 
   /*
    * Play / pause
    */
   const togglePlayPause = () => {
     try {
-      if (isVideo) {
+      if (isYouTube) {
+        // iOS may reject programmatic YouTube playback in an iframe. Expand
+        // the video and let its official controls own play/pause instead of
+        // displaying a false playing state in the outer player.
+        setVideoExpanded(true);
+        return;
+      } else if (isDirectVideo) {
         if (videoPlayer.playing) {
           videoPlayer.pause();
           releasePlayback();
@@ -172,11 +209,22 @@ const AudioPlayer = ({
     onClose();
   };
 
+  const toggleVideoExpansion = () => {
+    setVideoExpanded((currentlyExpanded) => {
+      if (currentlyExpanded) {
+        setYoutubePlaying(false);
+        releasePlayback();
+      }
+      return !currentlyExpanded;
+    });
+  };
+
   return (
     <Animated.View
       style={[
         styles.container,
-        isVideo && styles.expanded,
+        isDirectVideo && styles.expanded,
+        isYouTube && videoExpanded && styles.youtubeExpanded,
       ]}
     >
       <View style={styles.headerRow}>
@@ -204,10 +252,20 @@ const AudioPlayer = ({
           </Text>
         </View>
 
-        <View style={styles.headerSpacer} />
+        {isYouTube ? (
+          <TouchableOpacity onPress={toggleVideoExpansion} hitSlop={12}>
+            <Ionicons
+              name={videoExpanded ? 'chevron-down' : 'chevron-up'}
+              size={24}
+              color="white"
+            />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerSpacer} />
+        )}
       </View>
 
-      {isVideo && (
+      {isDirectVideo && (
         <VideoView
           player={videoPlayer}
           style={styles.videoPlayer}
@@ -216,43 +274,137 @@ const AudioPlayer = ({
         />
       )}
 
-      <View style={styles.controls}>
-        <TouchableOpacity
-          onPress={onPrevious}
-          disabled={disablePrevious}
-        >
-          <Ionicons
-            name="play-skip-back"
-            size={36}
-            color={disablePrevious ? '#555' : 'white'}
-          />
-        </TouchableOpacity>
+      {isYouTube && videoExpanded && youtubeVideoId && (
+        <View style={styles.youtubePlayer}>
+          <YoutubePlayer
+            height={205}
+            videoId={youtubeVideoId}
+            play={youtubePlaying}
+            forceAndroidAutoplay
+            initialPlayerParams={{
+              playsinline: true,
+            }}
+            webViewProps={{
+              allowsInlineMediaPlayback: true,
+              mediaPlaybackRequiresUserAction: false,
+            }}
+            onChangeState={(state) => {
+              if (state === 'playing') {
+                claimPlayback();
+                setYoutubePlaying(true);
+              }
 
-        <TouchableOpacity onPress={togglePlayPause}>
-          <Ionicons
-            name={
-              isPlaying
-                ? 'pause-circle'
-                : 'play-circle'
-            }
-            size={70}
-            color="#1DB954"
-          />
-        </TouchableOpacity>
+              if (state === 'paused') {
+                setYoutubePlaying(false);
+                releasePlayback();
+              }
 
-        <TouchableOpacity
-          onPress={onNext}
-          disabled={disableNext}
-        >
-          <Ionicons
-            name="play-skip-forward"
-            size={36}
-            color={disableNext ? '#555' : 'white'}
+              if (state === 'ended') {
+                setYoutubePlaying(false);
+                releasePlayback();
+              }
+            }}
           />
-        </TouchableOpacity>
-      </View>
+        </View>
+      )}
 
-      {!isVideo && (
+      {isYouTube && !videoExpanded ? (
+        <View style={styles.controls}>
+          <TouchableOpacity
+            onPress={onPrevious}
+            disabled={disablePrevious}
+          >
+            <Ionicons
+              name="play-skip-back"
+              size={36}
+              color={disablePrevious ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => setVideoExpanded(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Expand YouTube video"
+          >
+            <Ionicons
+              name="play-circle"
+              size={70}
+              color="#1DB954"
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={onNext}
+            disabled={disableNext}
+          >
+            <Ionicons
+              name="play-skip-forward"
+              size={36}
+              color={disableNext ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : isYouTube ? (
+        <View style={styles.controls}>
+          <TouchableOpacity
+            onPress={onPrevious}
+            disabled={disablePrevious}
+          >
+            <Ionicons
+              name="play-skip-back"
+              size={36}
+              color={disablePrevious ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+
+          <View style={styles.youtubeControlSpacer} />
+
+          <TouchableOpacity
+            onPress={onNext}
+            disabled={disableNext}
+          >
+            <Ionicons
+              name="play-skip-forward"
+              size={36}
+              color={disableNext ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={styles.controls}>
+          <TouchableOpacity
+            onPress={onPrevious}
+            disabled={disablePrevious}
+          >
+            <Ionicons
+              name="play-skip-back"
+              size={36}
+              color={disablePrevious ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={togglePlayPause}>
+            <Ionicons
+              name={isPlaying ? 'pause-circle' : 'play-circle'}
+              size={70}
+              color="#1DB954"
+            />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={onNext}
+            disabled={disableNext}
+          >
+            <Ionicons
+              name="play-skip-forward"
+              size={36}
+              color={disableNext ? '#555' : 'white'}
+            />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!isYouTube && !isDirectVideo && (
         <View style={styles.progressBarContainer}>
           <Animated.View
             style={[
@@ -265,6 +417,28 @@ const AudioPlayer = ({
               },
             ]}
           />
+        </View>
+      )}
+
+      {(sourceAttribution || (sourceLabel && sourceUrl)) && (
+        <View style={styles.sourceRow}>
+          {sourceAttribution && (
+            <Text style={styles.sourceAttribution} numberOfLines={1}>
+              {sourceAttribution}
+            </Text>
+          )}
+
+          {sourceLabel && sourceUrl && (
+            <TouchableOpacity
+              onPress={() => void Linking.openURL(sourceUrl)}
+              accessibilityRole="link"
+              accessibilityLabel={`Open in ${sourceLabel}`}
+              style={styles.sourceLink}
+            >
+              <Ionicons name="open-outline" size={14} color="#1DB954" />
+              <Text style={styles.sourceLinkText}>{sourceLabel}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </Animated.View>
@@ -286,6 +460,10 @@ const styles = StyleSheet.create({
 
   expanded: {
     height: 400,
+  },
+
+  youtubeExpanded: {
+    height: 455,
   },
 
   headerRow: {
@@ -323,6 +501,10 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
+  youtubeControlSpacer: {
+    width: 70,
+  },
+
   progressBarContainer: {
     height: 4,
     backgroundColor: '#333',
@@ -336,12 +518,55 @@ const styles = StyleSheet.create({
     backgroundColor: '#1DB954',
   },
 
+  sourceRow: {
+    minHeight: 24,
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+
+  sourceAttribution: {
+    flex: 1,
+    color: '#9E9E9E',
+    fontSize: 11,
+  },
+
+  sourceLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: '#202020',
+  },
+
+  sourceLinkText: {
+    color: '#1DB954',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
   videoPlayer: {
     width: '100%',
     height: 200,
     marginTop: 20,
     borderRadius: 12,
   },
+
+  youtubePlayer: {
+    marginTop: 14,
+    overflow: 'hidden',
+    borderRadius: 12,
+    backgroundColor: '#000',
+  },
 });
 
 export default AudioPlayer;
+
+
+
+
+

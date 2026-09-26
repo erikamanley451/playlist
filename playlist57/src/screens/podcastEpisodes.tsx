@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Modal, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Linking, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
@@ -148,6 +148,17 @@ const PodcastEpisodes = () => {
             </Text>
           </TouchableOpacity>
         )}
+        {show.externalUrl && (
+          <TouchableOpacity
+            onPress={() => void Linking.openURL(show.externalUrl!)}
+            accessibilityRole="link"
+            accessibilityLabel={`Open ${show.title} in Apple Podcasts`}
+            style={localStyles.appleLink}
+          >
+            <Ionicons name="open-outline" size={16} color="#1DB954" />
+            <Text style={localStyles.appleLinkText}>Apple Podcasts</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 10, paddingHorizontal: 16 }}>Episodes</Text>
@@ -158,6 +169,7 @@ const PodcastEpisodes = () => {
         <Text style={{ textAlign: "center", color: "gray", padding: 20 }}>No episodes were returned.</Text>
       ) : (
         <FlatList data={episodes} keyExtractor={(item) => item.id}
+          contentContainerStyle={activeEpisode ? { paddingBottom: 190 } : undefined}
           renderItem={({ item, index }) => (
             <View style={styles.songCard}>
               {item.artworkUrl && <Image source={{ uri: item.artworkUrl }} style={styles.songImage} />}
@@ -225,6 +237,25 @@ const PodcastEpisodes = () => {
     </SafeAreaView>
   );
 };
+
+const localStyles = StyleSheet.create({
+  appleLink: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    backgroundColor: "#EAF8EF",
+  },
+  appleLinkText: {
+    color: "#16883E",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+});
 
 export default PodcastEpisodes;
 
