@@ -1,18 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import { useIsFocused, useNavigation, useRoute } from "@react-navigation/native";
 import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, FlatList, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import type { StoredPlaylist } from "../services/playlistStorage";
+import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const Playlist = () => {
   const navigation = useNavigation<any>();
   const route = useRoute();
+  const isFocused = useIsFocused();
   const params = route.params as { songToAdd?: string; mediaToAdd?: string } | undefined;
   const incomingParam = params?.mediaToAdd ?? params?.songToAdd;
   const incomingItem = useMemo<ITunesMediaItem | null>(() => {
@@ -27,9 +28,25 @@ const Playlist = () => {
 
   useEffect(() => onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null)), []);
   useEffect(() => {
-    if (uid) loadPlaylists(uid).then(setPlaylists).catch(console.error);
-    else setPlaylists([]);
-  }, [uid]);
+    if (!isFocused) return;
+
+    let cancelled = false;
+
+    if (!uid) {
+      setPlaylists([]);
+      return;
+    }
+
+    loadPlaylists(uid)
+      .then((savedPlaylists) => {
+        if (!cancelled) setPlaylists(savedPlaylists);
+      })
+      .catch(console.error);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, isFocused]);
 
   const persist = async (updated: StoredPlaylist[]) => {
     if (!uid) return Alert.alert("Not signed in", "Please sign in before changing playlists.");
@@ -94,5 +111,7 @@ const Playlist = () => {
 };
 
 export default Playlist;
+
+
 
 
