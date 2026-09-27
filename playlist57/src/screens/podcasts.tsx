@@ -25,7 +25,6 @@ const PODCAST_CATEGORIES = [
   "Fitness",
   "Technology",
   "Business",
-  "True Crime",
   "Sports",
   "News",
 ] as const;
