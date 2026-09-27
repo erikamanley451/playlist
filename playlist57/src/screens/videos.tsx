@@ -27,6 +27,21 @@ import { styles } from "../styles/style";
 const { width } = Dimensions.get("window");
 const CARD_WIDTH = width / 2 - 15;
 
+const decodeHtmlEntities = (text: string) =>
+  text
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_, code) =>
+      String.fromCodePoint(Number(code))
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
+      String.fromCodePoint(parseInt(code, 16))
+    );
+
 const normalizeVideo = (item: any): ITunesMediaItem => {
   // Search results use item.id.videoId, chart results use item.id, and an
   // already-normalized item may use item.videoId or a `youtube:`-prefixed id.
@@ -39,8 +54,12 @@ const normalizeVideo = (item: any): ITunesMediaItem => {
   return {
     id: `youtube:${videoId}`,
     mediaType: "video",
-    title: item.snippet?.title || "YouTube Video",
-    creator: item.snippet?.channelTitle || "Unknown Channel",
+    title: decodeHtmlEntities(
+      item.snippet?.title || "YouTube Video"
+    ),
+    creator: decodeHtmlEntities(
+      item.snippet?.channelTitle || "Unknown Channel"
+    ),
     artworkUrl:
       item.snippet?.thumbnails?.medium?.url ||
       item.snippet?.thumbnails?.high?.url ||
@@ -50,7 +69,9 @@ const normalizeVideo = (item: any): ITunesMediaItem => {
     externalUrl: videoId
       ? `https://www.youtube.com/watch?v=${videoId}`
       : null,
-    description: item.snippet?.description || "",
+    description: decodeHtmlEntities(
+      item.snippet?.description || ""
+    ),
     durationMs: null,
     releaseDate: item.snippet?.publishedAt || null,
     videoId,
@@ -375,6 +396,10 @@ const style = {
 };
 
 export default Videos;
+
+
+
+
 
 
 
