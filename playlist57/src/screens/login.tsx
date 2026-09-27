@@ -1,16 +1,25 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  sendEmailVerification,
+  signInWithEmailAndPassword,
+  signOut,
+} from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import MyButton from "../components/MyButton";
 import { auth, db } from "../services/firebase";
 import { styles } from "../styles/style";
@@ -44,6 +53,25 @@ const Login = () => {
       );
 
       const user = userCredential.user;
+
+      if (!user.emailVerified) {
+        try {
+          await sendEmailVerification(user);
+        } catch (verificationError: any) {
+          console.warn(
+            "Verification email could not be resent:",
+            verificationError?.code,
+            verificationError?.message
+          );
+        }
+
+        await signOut(auth);
+        setError(
+          "Please verify your email before signing in. We sent another verification link."
+        );
+        return;
+      }
+
       const fallbackName =
         user.displayName?.trim() ||
         user.email?.split("@")[0] ||
@@ -136,25 +164,41 @@ const Login = () => {
     }
   };
 
+  const onForgotPassword = async () => {
+    if (isLoggingIn) return;
+    (navigation as any).navigate("ForgotPassword", {
+      email: email.trim().toLowerCase(),
+    });
+  };
+
   const onSignUp = () => {
     navigation.navigate("Signup" as never);
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={localStyles.safeArea}>
+      <KeyboardAvoidingView
+        style={localStyles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={localStyles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+      <View style={localStyles.header}>
         <Image
           source={require("../assets/images/headphones2.gif")}
-          style={styles.logoImage}
+          style={localStyles.logo}
         />
 
-        <Text style={styles.title}>PlayList</Text>
+        <Text style={[styles.title, localStyles.title]}>PlayList</Text>
       </View>
 
-      <View style={styles.formContainer}>
+      <View style={localStyles.form}>
         <TextInput
           placeholder="Email Address"
-          style={styles.input}
+          style={[styles.input, localStyles.inputSpacing]}
           onChangeText={setEmail}
           value={email}
           keyboardType="email-address"
@@ -166,15 +210,31 @@ const Login = () => {
 
         <TextInput
           placeholder="Password"
-          style={styles.input}
+          style={[styles.input, localStyles.passwordInput]}
           onChangeText={setPassword}
           value={password}
           secureTextEntry
           autoCapitalize="none"
           autoComplete="password"
           editable={!isLoggingIn}
+          maxLength={64}
           onSubmitEditing={onLogin}
         />
+
+        <TouchableOpacity
+          onPress={() => void onForgotPassword()}
+          disabled={isLoggingIn}
+          style={localStyles.forgotButton}
+        >
+          <Text
+            style={[
+              localStyles.forgotText,
+              isLoggingIn && { opacity: 0.5 },
+            ]}
+          >
+            Forgot password?
+          </Text>
+        </TouchableOpacity>
 
         {error !== "" && (
           <Text style={{ color: "red", marginBottom: 10 }}>
@@ -189,16 +249,94 @@ const Login = () => {
         />
       </View>
 
-      <TouchableOpacity onPress={onSignUp} disabled={isLoggingIn}>
-        <Text style={[styles.signUpText, isLoggingIn && { opacity: 0.5 }]}>
+      <TouchableOpacity
+        onPress={onSignUp}
+        disabled={isLoggingIn}
+        style={localStyles.bottomLink}
+      >
+        <Text
+          style={[
+            styles.signUpText,
+            isLoggingIn && { opacity: 0.5 },
+          ]}
+        >
           Don't Have an Account? Sign Up
         </Text>
       </TouchableOpacity>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
+const localStyles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 32,
+  },
+  logo: {
+    width: 180,
+    height: 180,
+    resizeMode: "contain",
+  },
+  title: {
+    fontSize: 42,
+    marginTop: 2,
+  },
+  form: {
+    width: "100%",
+    maxWidth: 430,
+    alignSelf: "center",
+  },
+  inputSpacing: {
+    height: 58,
+    marginBottom: 16,
+  },
+  passwordInput: {
+    height: 58,
+    marginBottom: 6,
+  },
+  forgotButton: {
+    alignSelf: "flex-end",
+    paddingVertical: 6,
+    marginTop: 0,
+    marginBottom: 10,
+  },
+  forgotText: {
+    color: "#1DB954",
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  bottomLink: {
+    alignSelf: "center",
+    marginTop: 24,
+    padding: 10,
+  },
+});
+
 export default Login;
+
+
+
+
+
+
+
+
+
 
 
 

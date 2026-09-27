@@ -1,7 +1,7 @@
-
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
+import ForgotPassword from "../screens/forgotPassword";
 import Index from "../screens/index";
 import Login from "../screens/login";
 import Signup from "../screens/signup";
@@ -28,55 +28,32 @@ export default function AppNavigator() {
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-
         {/* Welcome / Authentication */}
-        <Stack.Screen
-          name="Welcome"
-          component={Index}
-        />
+        <Stack.Screen name="Welcome" component={Index} />
+
+        <Stack.Screen name="Login" component={Login} />
+
+        <Stack.Screen name="Signup" component={Signup} />
 
         <Stack.Screen
-          name="Login"
-          component={Login}
-        />
-
-        <Stack.Screen
-          name="Signup"
-          component={Signup}
+          name="ForgotPassword"
+          component={ForgotPassword}
         />
 
         {/* Main application */}
-        <Stack.Screen
-          name="AppTabs"
-          component={AppTabs}
-        />
+        <Stack.Screen name="AppTabs" component={AppTabs} />
 
         {/* Content screens */}
-        <Stack.Screen
-          name="Songs"
-          component={Songs}
-        />
+        <Stack.Screen name="Songs" component={Songs} />
 
-        <Stack.Screen
-          name="Podcasts"
-          component={Podcasts}
-        />
+        <Stack.Screen name="Podcasts" component={Podcasts} />
 
-        <Stack.Screen
-          name="Audiobooks"
-          component={Audiobooks}
-        />
+        <Stack.Screen name="Audiobooks" component={Audiobooks} />
 
-        <Stack.Screen
-          name="Videos"
-          component={Videos}
-        />
+        <Stack.Screen name="Videos" component={Videos} />
 
         {/* Categories */}
-        <Stack.Screen
-          name="Categories"
-          component={Categories}
-        />
+        <Stack.Screen name="Categories" component={Categories} />
 
         {/* Podcast details */}
         <Stack.Screen
@@ -85,10 +62,7 @@ export default function AppNavigator() {
         />
 
         {/* Playlist details */}
-        <Stack.Screen
-          name="Playlist"
-          component={Playlist}
-        />
+        <Stack.Screen name="Playlist" component={Playlist} />
 
         <Stack.Screen
           name="PlaylistSongs"
@@ -102,15 +76,13 @@ export default function AppNavigator() {
         />
 
         {/* Search */}
-        <Stack.Screen
-          name="Search"
-          component={SearchResults}
-        />
-
+        <Stack.Screen name="Search" component={SearchResults} />
       </Stack.Navigator>
     </NavigationContainer>
   );
 }
+
+
 
 
 

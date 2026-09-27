@@ -1,6 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
-import { createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  createUserWithEmailAndPassword,
+  sendEmailVerification,
+  signOut,
+  updateProfile,
+} from "firebase/auth";
 import {
   doc,
   serverTimestamp,
@@ -8,12 +13,18 @@ import {
 } from "firebase/firestore";
 import { useState } from "react";
 import {
+  Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import MyButton from "../components/MyButton";
 import { auth, db } from "../services/firebase";
 import { styles } from "../styles/style";
@@ -56,9 +67,26 @@ const SignUp = () => {
       return;
     }
 
-    if (password.length < 6) {
+    if (password.length < 8 || password.length > 64) {
       setError(
-        "Password must be at least 6 characters."
+        "Password must be between 8 and 64 characters."
+      );
+      return;
+    }
+
+    const hasUppercase = /[A-Z]/.test(password);
+    const hasLowercase = /[a-z]/.test(password);
+    const hasNumber = /[0-9]/.test(password);
+    const hasSpecialCharacter = /[^A-Za-z0-9]/.test(password);
+
+    if (
+      !hasUppercase ||
+      !hasLowercase ||
+      !hasNumber ||
+      !hasSpecialCharacter
+    ) {
+      setError(
+        "Password must include uppercase, lowercase, a number, and a special character."
       );
       return;
     }
@@ -78,6 +106,10 @@ const SignUp = () => {
         );
 
       const user = userCredential.user;
+
+      await updateProfile(user, {
+        displayName: cleanName,
+      });
 
       // Make the name available to the profile UI immediately.
       await AsyncStorage.setItem("fullName", cleanName);
@@ -104,15 +136,30 @@ const SignUp = () => {
         );
       });
 
-      /*
-       * The account is created and the user is signed in.
-       * Reset navigation so they cannot go back to signup.
-       */
-      (navigation as any).reset({
-        index: 0,
-        routes: [{ name: "AppTabs" }],
-      });
+      await sendEmailVerification(user);
+      await signOut(auth);
+
+      Alert.alert(
+        "Verify your email",
+        "We sent a verification link to your email address. Verify it before signing in.",
+        [
+          {
+            text: "OK",
+            onPress: () =>
+              (navigation as any).reset({
+                index: 0,
+                routes: [{ name: "Login" }],
+              }),
+          },
+        ]
+      );
     } catch (error: any) {
+      // Do not leave a newly-created, unverified account signed in when
+      // profile or verification setup encounters an error.
+      if (auth.currentUser && !auth.currentUser.emailVerified) {
+        await signOut(auth).catch(() => {});
+      }
+
       console.error(
         "Signup error:",
         error.code,
@@ -169,22 +216,31 @@ const SignUp = () => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={localStyles.safeArea}>
+      <KeyboardAvoidingView
+        style={localStyles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={localStyles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+      <View style={localStyles.header}>
         <Image
           source={require(
             "../assets/images/headphones2.gif"
           )}
-          style={styles.logoImage}
+          style={localStyles.logo}
         />
 
-        <Text style={styles.title}>PlayList</Text>
+        <Text style={[styles.title, localStyles.title]}>PlayList</Text>
       </View>
 
-      <View style={styles.formContainer}>
+      <View style={localStyles.form}>
         <TextInput
           placeholder="Full Name"
-          style={styles.input}
+          style={[styles.input, localStyles.inputSpacing]}
           onChangeText={setFullName}
           value={fullName}
           autoCapitalize="words"
@@ -194,7 +250,7 @@ const SignUp = () => {
 
         <TextInput
           placeholder="Email Address"
-          style={styles.input}
+          style={[styles.input, localStyles.inputSpacing]}
           onChangeText={setEmail}
           value={email}
           keyboardType="email-address"
@@ -206,24 +262,30 @@ const SignUp = () => {
 
         <TextInput
           placeholder="Password"
-          style={styles.input}
+          style={[styles.input, localStyles.passwordInput]}
           onChangeText={setPassword}
           value={password}
           secureTextEntry
           autoCapitalize="none"
           autoComplete="new-password"
           editable={!isSigningUp}
+          maxLength={64}
         />
+
+        <Text style={localStyles.passwordHint}>
+          Use 8–64 characters with uppercase, lowercase, a number, and a special character.
+        </Text>
 
         <TextInput
           placeholder="Confirm Password"
-          style={styles.input}
+          style={[styles.input, localStyles.inputSpacing]}
           onChangeText={setConfirmPassword}
           value={confirmPassword}
           secureTextEntry
           autoCapitalize="none"
           autoComplete="new-password"
           editable={!isSigningUp}
+          maxLength={64}
           onSubmitEditing={onSignUp}
         />
 
@@ -252,6 +314,7 @@ const SignUp = () => {
       <TouchableOpacity
         onPress={onLogin}
         disabled={isSigningUp}
+        style={localStyles.bottomLink}
       >
         <Text
           style={[
@@ -262,11 +325,75 @@ const SignUp = () => {
           Already Have an Account? Login
         </Text>
       </TouchableOpacity>
-    </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
+const localStyles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  keyboardView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    paddingVertical: 24,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 22,
+  },
+  logo: {
+    width: 150,
+    height: 150,
+    resizeMode: "contain",
+  },
+  title: {
+    fontSize: 38,
+    marginTop: 0,
+  },
+  form: {
+    width: "100%",
+    maxWidth: 430,
+    alignSelf: "center",
+  },
+  inputSpacing: {
+    height: 58,
+    marginBottom: 14,
+  },
+  passwordInput: {
+    height: 58,
+    marginBottom: 6,
+  },
+  passwordHint: {
+    color: "#666",
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 10,
+  },
+  bottomLink: {
+    alignSelf: "center",
+    marginTop: 18,
+    padding: 10,
+  },
+});
+
 export default SignUp;
+
+
+
+
+
+
+
+
+
 
 
 
