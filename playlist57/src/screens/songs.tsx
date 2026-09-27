@@ -6,6 +6,7 @@ import { ActivityIndicator, FlatList, Image, Modal, Text, TextInput, TouchableOp
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
+import SearchBar from "../components/searchBar";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
 import { fetchSongs, fetchTopSongs } from "../services/itunesService";
@@ -149,10 +150,12 @@ const Songs = () => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Songs</Text>
       </View>
-      <View style={styles.searchContainer}>
-        <TextInput style={styles.searchInput} placeholder="Search songs..." value={searchQuery}
-          onChangeText={setSearchQuery} onSubmitEditing={() => void search()} returnKeyType="search" />
-      </View>
+      <SearchBar
+        placeholder="Search songs..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onSubmit={() => void search()}
+      />
       {loading ? (
         <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#1DB954" /></View>
       ) : songs.length === 0 ? (
@@ -265,6 +268,7 @@ const Songs = () => {
 };
 
 export default Songs;
+
 
 
 

@@ -15,11 +15,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
+import SearchBar from "../components/searchBar";
 import YouTubePlayer from "../components/YouTubePlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import { createPlaylist, loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import type { StoredPlaylist } from "../services/playlistStorage";
+import { createPlaylist, loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import { fetchPopularVideos, fetchVideos } from "../services/youtubeService";
 import { styles } from "../styles/style";
 
@@ -267,16 +268,12 @@ const Videos = () => {
         <Text style={styles.headerTitle}>Videos</Text>
       </View>
 
-      <View style={{ padding: 10 }}>
-        <TextInput
-          placeholder="Search YouTube videos..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={() => void handleSearch()}
-          returnKeyType="search"
-          style={styles.searchInput}
-        />
-      </View>
+      <SearchBar
+        placeholder="Search YouTube videos..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onSubmit={() => void handleSearch()}
+      />
 
       {loading ? (
         <ActivityIndicator size="large" color="#1DB954" style={{ marginTop: 40 }} />
@@ -378,6 +375,11 @@ const style = {
 };
 
 export default Videos;
+
+
+
+
+
 
 
 

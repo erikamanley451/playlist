@@ -9,12 +9,12 @@ import {
   FlatList,
   Image,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AudioPlayer from "../components/AudioPlayer";
+import SearchBar from "../components/searchBar";
 import type { ITunesMediaItem } from "../services/itunesService";
 import { fetchAudiobooks } from "../services/itunesService";
 import { styles } from "../styles/style";
@@ -70,16 +70,12 @@ const Audiobooks = () => {
         <Text style={styles.headerTitle}>Audiobooks</Text>
       </View>
 
-      <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Search audiobooks..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={() => void search()}
-          returnKeyType="search"
-          style={styles.searchInput}
-        />
-      </View>
+      <SearchBar
+        placeholder="Search audiobooks..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onSubmit={() => void search()}
+      />
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -173,6 +169,7 @@ const Audiobooks = () => {
 };
 
 export default Audiobooks;
+
 
 
 

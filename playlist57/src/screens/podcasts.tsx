@@ -8,11 +8,11 @@ import {
   Modal,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import SearchBar from "../components/searchBar";
 import type { ITunesMediaItem } from "../services/itunesService";
 import {
   fetchPodcasts,
@@ -25,6 +25,7 @@ const PODCAST_CATEGORIES = [
   "Fitness",
   "Technology",
   "Business",
+  "True Crime",
   "Sports",
   "News",
 ] as const;
@@ -112,16 +113,12 @@ const Podcasts = () => {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Search podcasts..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          onSubmitEditing={() => void search()}
-          returnKeyType="search"
-          style={styles.searchInput}
-        />
-      </View>
+      <SearchBar
+        placeholder="Search podcasts..."
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        onSubmit={() => void search()}
+      />
 
       <Text style={localStyles.resultLabel}>
         {selectedFilter ? `Showing: ${selectedFilter}` : "Search results"}
@@ -289,5 +286,6 @@ const localStyles = StyleSheet.create({
 });
 
 export default Podcasts;
+
 
 
