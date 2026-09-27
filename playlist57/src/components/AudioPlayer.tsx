@@ -4,26 +4,22 @@ import { VideoView, useVideoPlayer } from 'expo-video';
 import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
+  type GestureResponderEvent,
   Linking,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import YoutubePlayer from 'react-native-youtube-iframe';
-
-const { width } = Dimensions.get('window');
-
 type ActivePlayback = {
   owner: symbol;
   stop: () => void;
 };
-
 // AudioPlayer can be mounted on more than one navigation screen at a time.
 // Keep one shared owner so starting a new player always silences the old one.
 let activePlayback: ActivePlayback | null = null;
-
 type AudioPlayerProps = {
   previewUrl?: string;
   youtubeVideoId?: string | null;
@@ -38,7 +34,6 @@ type AudioPlayerProps = {
   sourceLabel?: string;
   sourceUrl?: string | null;
 };
-
 const AudioPlayer = ({
   previewUrl = '',
   youtubeVideoId,
@@ -53,18 +48,16 @@ const AudioPlayer = ({
   sourceLabel,
   sourceUrl,
 }: AudioPlayerProps) => {
-  const [progress, setProgress] = useState(0);
+  const [progressBarWidth, setProgressBarWidth] = useState(0);
   const [videoExpanded, setVideoExpanded] = useState(false);
   const [youtubePlaying, setYoutubePlaying] = useState(false);
-
   const progressAnim = useRef(new Animated.Value(0)).current;
   const owner = useRef(Symbol('AudioPlayer')).current;
-
+  const handledFinish = useRef(false);
   const isYouTube = Boolean(youtubeVideoId);
   const isDirectVideo =
     !isYouTube &&
     (previewUrl.endsWith('.mp4') || previewUrl.includes('video'));
-
   /*
    * Audio player
    */
@@ -72,9 +65,7 @@ const AudioPlayer = ({
   // directly to useAudioPlayer can release and recreate the native object
   // during a skip, leaving button handlers with an invalid object.
   const audioPlayer = useAudioPlayer(null);
-
   const audioStatus = useAudioPlayerStatus(audioPlayer);
-
   /*
    * Video player
    */
@@ -84,13 +75,11 @@ const AudioPlayer = ({
       player.loop = false;
     }
   );
-
   const isPlaying = isYouTube
     ? youtubePlaying
     : isDirectVideo
       ? videoPlayer.playing
       : audioStatus.playing;
-
   const stopPlayback = () => {
     try {
       if (isYouTube) setYoutubePlaying(false);
@@ -100,18 +89,15 @@ const AudioPlayer = ({
       // The native player may already have been released during unmounting.
     }
   };
-
   const claimPlayback = () => {
     if (activePlayback?.owner !== owner) {
       activePlayback?.stop();
       activePlayback = { owner, stop: stopPlayback };
     }
   };
-
   const releasePlayback = () => {
     if (activePlayback?.owner === owner) activePlayback = null;
   };
-
   /*
    * Audio progress
    */
@@ -119,9 +105,6 @@ const AudioPlayer = ({
     if (!isYouTube && !isDirectVideo && audioStatus.duration > 0) {
       const position =
         audioStatus.currentTime / audioStatus.duration;
-
-      setProgress(position);
-
       Animated.timing(progressAnim, {
         toValue: position,
         duration: 500,
@@ -135,11 +118,30 @@ const AudioPlayer = ({
     isYouTube,
     progressAnim,
   ]);
+  /*
+   * Automatically advance after an audio preview finishes.
+   */
+  useEffect(() => {
+    if (isYouTube || isDirectVideo || !audioStatus.didJustFinish) return;
+    if (handledFinish.current) return;
 
+    handledFinish.current = true;
+    releasePlayback();
+
+    if (!disableNext) onNext();
+  }, [
+    audioStatus.didJustFinish,
+    disableNext,
+    isDirectVideo,
+    isYouTube,
+    onNext,
+  ]);
   /*
    * Automatically start audio when previewUrl changes.
    */
   useEffect(() => {
+    handledFinish.current = false;
+
     // The native audio object is still valid while props change. Stop its
     // previous source before switching to a YouTube or direct-video item.
     try {
@@ -147,29 +149,23 @@ const AudioPlayer = ({
     } catch {
       // There may not be a loaded audio source yet.
     }
-
     releasePlayback();
-
     if (!previewUrl || isYouTube || isDirectVideo) return;
-
     audioPlayer.replace(previewUrl);
     claimPlayback();
     audioPlayer.play();
-
     return () => {
       // useAudioPlayer/useVideoPlayer release their native objects on unmount.
       // Calling pause here can run after that release and throw NotFoundException.
       releasePlayback();
     };
   }, [previewUrl, isDirectVideo, isYouTube]);
-
   useEffect(() => {
     // Start each YouTube item collapsed. The outer green button reveals the
     // embedded player; YouTube's own controls then handle playback.
     setVideoExpanded(false);
     setYoutubePlaying(false);
   }, [youtubeVideoId]);
-
   /*
    * Play / pause
    */
@@ -202,13 +198,30 @@ const AudioPlayer = ({
       console.error('Play/Pause error:', error);
     }
   };
+  const handleSeek = async (event: GestureResponderEvent) => {
+    if (progressBarWidth <= 0 || audioStatus.duration <= 0) return;
 
+    const tappedPosition = event.nativeEvent.locationX;
+    const nextProgress = Math.max(
+      0,
+      Math.min(tappedPosition / progressBarWidth, 1)
+    );
+    const targetTime = nextProgress * audioStatus.duration;
+
+    // Update the indicator immediately while the native player seeks.
+    progressAnim.setValue(nextProgress);
+
+    try {
+      await audioPlayer.seekTo(targetTime);
+    } catch (error) {
+      console.warn('Audio seek error:', error);
+    }
+  };
   const handleClose = () => {
     stopPlayback();
     releasePlayback();
     onClose();
   };
-
   const toggleVideoExpansion = () => {
     setVideoExpanded((currentlyExpanded) => {
       if (currentlyExpanded) {
@@ -218,7 +231,6 @@ const AudioPlayer = ({
       return !currentlyExpanded;
     });
   };
-
   return (
     <Animated.View
       style={[
@@ -235,7 +247,6 @@ const AudioPlayer = ({
             color="white"
           />
         </TouchableOpacity>
-
         <View style={styles.titleContainer}>
           <Text
             style={styles.songTitle}
@@ -243,7 +254,6 @@ const AudioPlayer = ({
           >
             {songName}
           </Text>
-
           <Text
             style={styles.artistName}
             numberOfLines={1}
@@ -251,7 +261,6 @@ const AudioPlayer = ({
             {artistName}
           </Text>
         </View>
-
         {isYouTube ? (
           <TouchableOpacity onPress={toggleVideoExpansion} hitSlop={12}>
             <Ionicons
@@ -264,7 +273,6 @@ const AudioPlayer = ({
           <View style={styles.headerSpacer} />
         )}
       </View>
-
       {isDirectVideo && (
         <VideoView
           player={videoPlayer}
@@ -273,7 +281,6 @@ const AudioPlayer = ({
           contentFit="contain"
         />
       )}
-
       {isYouTube && videoExpanded && youtubeVideoId && (
         <View style={styles.youtubePlayer}>
           <YoutubePlayer
@@ -293,12 +300,10 @@ const AudioPlayer = ({
                 claimPlayback();
                 setYoutubePlaying(true);
               }
-
               if (state === 'paused') {
                 setYoutubePlaying(false);
                 releasePlayback();
               }
-
               if (state === 'ended') {
                 setYoutubePlaying(false);
                 releasePlayback();
@@ -307,7 +312,6 @@ const AudioPlayer = ({
           />
         </View>
       )}
-
       {isYouTube && !videoExpanded ? (
         <View style={styles.controls}>
           <TouchableOpacity
@@ -320,7 +324,6 @@ const AudioPlayer = ({
               color={disablePrevious ? '#555' : 'white'}
             />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={() => setVideoExpanded(true)}
             accessibilityRole="button"
@@ -332,7 +335,6 @@ const AudioPlayer = ({
               color="#1DB954"
             />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={onNext}
             disabled={disableNext}
@@ -356,9 +358,7 @@ const AudioPlayer = ({
               color={disablePrevious ? '#555' : 'white'}
             />
           </TouchableOpacity>
-
           <View style={styles.youtubeControlSpacer} />
-
           <TouchableOpacity
             onPress={onNext}
             disabled={disableNext}
@@ -382,7 +382,6 @@ const AudioPlayer = ({
               color={disablePrevious ? '#555' : 'white'}
             />
           </TouchableOpacity>
-
           <TouchableOpacity onPress={togglePlayPause}>
             <Ionicons
               name={isPlaying ? 'pause-circle' : 'play-circle'}
@@ -390,7 +389,6 @@ const AudioPlayer = ({
               color="#1DB954"
             />
           </TouchableOpacity>
-
           <TouchableOpacity
             onPress={onNext}
             disabled={disableNext}
@@ -403,8 +401,17 @@ const AudioPlayer = ({
           </TouchableOpacity>
         </View>
       )}
-
-      {!isYouTube && !isDirectVideo && (
+    {!isYouTube && !isDirectVideo && (
+      <Pressable
+        style={styles.progressTouchArea}
+        onLayout={(event) =>
+          setProgressBarWidth(event.nativeEvent.layout.width)
+        }
+        onPress={(event) => void handleSeek(event)}
+        accessibilityRole="adjustable"
+        accessibilityLabel="Audio progress"
+        accessibilityHint="Tap to move to a different point in the audio"
+      >
         <View style={styles.progressBarContainer}>
           <Animated.View
             style={[
@@ -412,14 +419,14 @@ const AudioPlayer = ({
               {
                 width: progressAnim.interpolate({
                   inputRange: [0, 1],
-                  outputRange: [0, width - 40],
+                  outputRange: ['0%', '100%'],
                 }),
               },
             ]}
           />
         </View>
-      )}
-
+      </Pressable>
+    )}
       {(sourceAttribution || (sourceLabel && sourceUrl)) && (
         <View style={styles.sourceRow}>
           {sourceAttribution && (
@@ -427,7 +434,6 @@ const AudioPlayer = ({
               {sourceAttribution}
             </Text>
           )}
-
           {sourceLabel && sourceUrl && (
             <TouchableOpacity
               onPress={() => void Linking.openURL(sourceUrl)}
@@ -444,7 +450,6 @@ const AudioPlayer = ({
     </Animated.View>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
@@ -457,42 +462,34 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     elevation: 12,
   },
-
   expanded: {
     height: 400,
   },
-
   youtubeExpanded: {
     height: 455,
   },
-
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-
   titleContainer: {
     flex: 1,
     alignItems: 'center',
     marginHorizontal: 10,
   },
-
   songTitle: {
     color: 'white',
     fontWeight: 'bold',
     fontSize: 16,
   },
-
   artistName: {
     color: '#aaa',
     fontSize: 13,
   },
-
   headerSpacer: {
     width: 32,
   },
-
   controls: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -500,24 +497,25 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 14,
   },
-
   youtubeControlSpacer: {
     width: 70,
   },
-
+  progressTouchArea: {
+    height: 24,
+    marginHorizontal: 20,
+    justifyContent: 'center',
+  },
   progressBarContainer: {
+    width: '100%',
     height: 4,
     backgroundColor: '#333',
     borderRadius: 2,
     overflow: 'hidden',
-    marginHorizontal: 20,
   },
-
   progressBar: {
     height: 4,
     backgroundColor: '#1DB954',
   },
-
   sourceRow: {
     minHeight: 24,
     marginTop: 8,
@@ -526,13 +524,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-
   sourceAttribution: {
     flex: 1,
     color: '#9E9E9E',
     fontSize: 11,
   },
-
   sourceLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -542,20 +538,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#202020',
   },
-
   sourceLinkText: {
     color: '#1DB954',
     fontSize: 11,
     fontWeight: '700',
   },
-
   videoPlayer: {
     width: '100%',
     height: 200,
     marginTop: 20,
     borderRadius: 12,
   },
-
   youtubePlayer: {
     marginTop: 14,
     overflow: 'hidden',
@@ -563,8 +556,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#000',
   },
 });
-
 export default AudioPlayer;
+
+
+
 
 
 

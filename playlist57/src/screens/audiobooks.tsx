@@ -100,7 +100,7 @@ const Audiobooks = () => {
           data={audiobooks}
           keyExtractor={(item) => item.id}
           contentContainerStyle={
-            activeBook ? { paddingBottom: 190 } : undefined
+            activeBook ? { paddingBottom: 220 } : undefined
           }
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -163,6 +163,9 @@ const Audiobooks = () => {
           onPrevious={() => {}}
           disableNext
           disablePrevious
+          sourceAttribution="Preview provided by Apple"
+          sourceLabel="Apple Books"
+          sourceUrl={activeBook.externalUrl}
         />
       )}
     </SafeAreaView>
@@ -170,6 +173,7 @@ const Audiobooks = () => {
 };
 
 export default Audiobooks;
+
 
 
 
