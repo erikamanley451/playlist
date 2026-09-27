@@ -1,3 +1,4 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import {
@@ -78,16 +79,24 @@ const SignUp = () => {
 
       const user = userCredential.user;
 
+      // Make the name available to the profile UI immediately.
+      await AsyncStorage.setItem("fullName", cleanName);
+
       /*
        * Save the profile in the background.
        * Do not await this because an offline Firestore
        * connection could prevent navigation.
        */
-      void setDoc(doc(db, "users", user.uid), {
-        fullName: cleanName,
-        email: cleanEmail,
-        createdAt: serverTimestamp(),
-      }).catch((firestoreError: any) => {
+      void setDoc(
+        doc(db, "users", user.uid),
+        {
+          uid: user.uid,
+          fullName: cleanName,
+          email: cleanEmail,
+          createdAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch((firestoreError: any) => {
         console.error(
           "Account created, but profile did not synchronize:",
           firestoreError.code,
@@ -258,6 +267,9 @@ const SignUp = () => {
 };
 
 export default SignUp;
+
+
+
 
 
 

@@ -2,7 +2,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useNavigation } from "@react-navigation/native";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useState } from "react";
 import {
   Image,
@@ -21,56 +21,120 @@ const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const onLogin = async () => {
-  try {
-    console.log("1. Starting Firebase login...");
+    if (isLoggingIn) return;
 
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      email,
-      password
-    );
+    const cleanEmail = email.trim().toLowerCase();
 
-    const user = userCredential.user;
-
-    console.log("2. Login successful:", user.uid);
-
-    // Fetch user profile from Firestore
-    console.log("3. Fetching user profile from Firestore...");
-
-    const userRef = doc(db, "users", user.uid);
-    const userSnap = await getDoc(userRef);
-
-    console.log("4. Firestore request completed.");
-
-    if (userSnap.exists()) {
-      const userData = userSnap.data();
-
-      console.log("User Data:", userData);
-
-      if (userData.fullName) {
-        await AsyncStorage.setItem("fullName", userData.fullName);
-      } else {
-        console.warn("userData.fullName is undefined");
-      }
-    } else {
-      console.log("No Firestore profile found for this user.");
+    if (!cleanEmail || !password) {
+      setError("Please enter your email and password.");
+      return;
     }
 
-    setError("");
+    try {
+      setIsLoggingIn(true);
+      setError("");
 
-    console.log("5. Navigating to AppTabs...");
-    navigation.navigate("AppTabs" as never);
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        cleanEmail,
+        password
+      );
 
-  } catch (error: any) {
-    console.error("LOGIN ERROR:", error);
-    console.error("ERROR CODE:", error?.code);
-    console.error("ERROR MESSAGE:", error?.message);
+      const user = userCredential.user;
+      const fallbackName =
+        user.displayName?.trim() ||
+        user.email?.split("@")[0] ||
+        "User";
 
-    setError("Login failed: " + error.message);
-  }
-};
+      // Give the app a safe local display name immediately. A Firestore
+      // profile can replace it later without blocking a successful login.
+      await AsyncStorage.setItem("fullName", fallbackName);
+
+      // Authentication succeeded, so enter the app immediately. Resetting the
+      // stack prevents returning to Login with the back button.
+      (navigation as any).reset({
+        index: 0,
+        routes: [{ name: "AppTabs" }],
+      });
+
+      // Profile synchronization is optional and must never turn a successful
+      // Firebase Authentication result into a failed login.
+      void (async () => {
+        const userRef = doc(db, "users", user.uid);
+
+        try {
+          const userSnap = await getDoc(userRef);
+
+          if (userSnap.exists()) {
+            const profileName = userSnap.data().fullName;
+
+            if (typeof profileName === "string" && profileName.trim()) {
+              await AsyncStorage.setItem("fullName", profileName.trim());
+            }
+          } else {
+            // Older Authentication accounts may not have a Firestore profile.
+            await setDoc(
+              userRef,
+              {
+                uid: user.uid,
+                email: user.email ?? cleanEmail,
+                fullName: fallbackName,
+                createdAt: serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        } catch (profileError: any) {
+          console.warn(
+            "Signed in, but the profile is temporarily unavailable:",
+            profileError?.code,
+            profileError?.message
+          );
+
+          // Queue safe profile fields without overwriting an existing name.
+          void setDoc(
+            userRef,
+            {
+              uid: user.uid,
+              email: user.email ?? cleanEmail,
+              lastLoginAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+      })();
+    } catch (error: any) {
+      console.error("Login error:", error?.code, error?.message);
+
+      switch (error?.code) {
+        case "auth/invalid-credential":
+        case "auth/wrong-password":
+        case "auth/user-not-found":
+          setError("Incorrect email or password.");
+          break;
+
+        case "auth/invalid-email":
+          setError("Please enter a valid email address.");
+          break;
+
+        case "auth/network-request-failed":
+          setError("Unable to connect. Please check your internet connection.");
+          break;
+
+        case "auth/too-many-requests":
+          setError("Too many attempts. Please try again later.");
+          break;
+
+        default:
+          setError("Unable to sign in. Please try again.");
+      }
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const onSignUp = () => {
     navigation.navigate("Signup" as never);
@@ -95,6 +159,9 @@ const Login = () => {
           value={email}
           keyboardType="email-address"
           autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          editable={!isLoggingIn}
         />
 
         <TextInput
@@ -103,6 +170,10 @@ const Login = () => {
           onChangeText={setPassword}
           value={password}
           secureTextEntry
+          autoCapitalize="none"
+          autoComplete="password"
+          editable={!isLoggingIn}
+          onSubmitEditing={onLogin}
         />
 
         {error !== "" && (
@@ -111,11 +182,15 @@ const Login = () => {
           </Text>
         )}
 
-        <MyButton title="LOGIN" onPress={onLogin} />
+        <MyButton
+          title={isLoggingIn ? "SIGNING IN..." : "LOGIN"}
+          onPress={onLogin}
+          disabled={isLoggingIn}
+        />
       </View>
 
-      <TouchableOpacity onPress={onSignUp}>
-        <Text style={styles.signUpText}>
+      <TouchableOpacity onPress={onSignUp} disabled={isLoggingIn}>
+        <Text style={[styles.signUpText, isLoggingIn && { opacity: 0.5 }]}>
           Don't Have an Account? Sign Up
         </Text>
       </TouchableOpacity>
@@ -124,5 +199,7 @@ const Login = () => {
 };
 
 export default Login;
+
+
 
 

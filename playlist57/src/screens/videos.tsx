@@ -27,7 +27,13 @@ const { width } = Dimensions.get("window");
 const CARD_WIDTH = width / 2 - 15;
 
 const normalizeVideo = (item: any): ITunesMediaItem => {
-  const videoId = item.id?.videoId || item.id;
+  // Search results use item.id.videoId, chart results use item.id, and an
+  // already-normalized item may use item.videoId or a `youtube:`-prefixed id.
+  const rawVideoId = item.videoId ?? item.id?.videoId ?? item.id;
+  const videoId =
+    typeof rawVideoId === "string"
+      ? rawVideoId.replace(/^youtube:/, "")
+      : "";
 
   return {
     id: `youtube:${videoId}`,
@@ -156,7 +162,14 @@ const Videos = () => {
   };
 
   const openModal = (item: any) => {
-    setSelectedVideo(normalizeVideo(item));
+    const video = normalizeVideo(item);
+
+    if (!video.videoId) {
+      Toast.show({ type: "error", text1: "Unable to add this video" });
+      return;
+    }
+
+    setSelectedVideo(video);
     setModalVisible(true);
   };
 
@@ -365,6 +378,12 @@ const style = {
 };
 
 export default Videos;
+
+
+
+
+
+
 
 
 
