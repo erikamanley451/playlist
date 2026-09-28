@@ -7,6 +7,7 @@ import {
   FlatList,
   Image,
   SafeAreaView,
+  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -14,13 +15,16 @@ import {
 import AudioPlayer from "../components/AudioPlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import type { StoredPlaylist } from "../services/playlistStorage";
+import { loadPlaylists, savePlaylists } from "../services/playlistStorage";
 import { styles } from "../styles/style";
 
 const extractYouTubeVideoId = (value?: string | null): string | null => {
   if (!value) return null;
   if (/^[A-Za-z0-9_-]{11}$/.test(value)) return value;
+
+  const storedIdMatch = value.match(/^youtube:([A-Za-z0-9_-]{11})$/);
+  if (storedIdMatch) return storedIdMatch[1];
 
   const match = value.match(
     /(?:youtu\.be\/|youtube\.com\/(?:watch\?.*?v=|embed\/|shorts\/|live\/))([A-Za-z0-9_-]{11})/
@@ -61,7 +65,17 @@ const PlaylistSongs = () => {
   const [songs, setSongs] = useState<ITunesMediaItem[]>([]);
   const [activeItem, setActiveItem] = useState<ITunesMediaItem | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [shuffleMode, setShuffleMode] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const playableIndices = useMemo(
+    () =>
+      songs.reduce<number[]>((indices, item, index) => {
+        if (isPlayable(item)) indices.push(index);
+        return indices;
+      }, []),
+    [songs]
+  );
 
   useEffect(
     () => onAuthStateChanged(auth, (user) => setUid(user?.uid ?? null)),
@@ -94,6 +108,7 @@ const PlaylistSongs = () => {
     if (!isFocused) {
       setActiveItem(null);
       setCurrentIndex(null);
+      setShuffleMode(false);
     }
   }, [isFocused]);
 
@@ -115,9 +130,55 @@ const PlaylistSongs = () => {
     setActiveItem(item);
   };
 
+  const playFromBeginning = () => {
+    const firstPlayableIndex = playableIndices[0];
+    if (firstPlayableIndex === undefined) return;
+
+    setShuffleMode(false);
+    playAt(firstPlayableIndex);
+  };
+
+  const randomPlayableIndex = (indexToExclude?: number | null) => {
+    const choices = playableIndices.filter(
+      (index) => index !== indexToExclude
+    );
+
+    if (choices.length === 0) {
+      return playableIndices[0] ?? null;
+    }
+
+    return choices[Math.floor(Math.random() * choices.length)] ?? null;
+  };
+
+  const startShuffle = () => {
+    const randomIndex = randomPlayableIndex(currentIndex);
+    if (randomIndex === null) return;
+
+    setShuffleMode(true);
+    playAt(randomIndex);
+  };
+
+  const playNext = () => {
+    if (currentIndex === null) return;
+
+    const next = shuffleMode
+      ? randomPlayableIndex(currentIndex)
+      : playableIndex(currentIndex, 1);
+
+    if (next !== null) playAt(next);
+  };
+
+  const playPrevious = () => {
+    if (shuffleMode || currentIndex === null) return;
+
+    const previous = playableIndex(currentIndex, -1);
+    if (previous !== null) playAt(previous);
+  };
+
   const closePlayer = () => {
     setActiveItem(null);
     setCurrentIndex(null);
+    setShuffleMode(false);
   };
 
   const handleDelete = async (indexToRemove: number) => {
@@ -173,12 +234,47 @@ const PlaylistSongs = () => {
   return (
     <SafeAreaView style={styles.safeAreaContainer}>
       <View style={styles.headerContainer}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
           <Ionicons name="arrow-back" size={24} color="black" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
+        <Text
+          style={[styles.headerTitle, localStyles.headerTitle]}
+          numberOfLines={1}
+        >
           {passedPlaylist?.name || "Playlist"}
         </Text>
+
+        <View style={localStyles.headerActions}>
+          <TouchableOpacity
+            onPress={startShuffle}
+            disabled={playableIndices.length === 0}
+            style={[
+              localStyles.headerActionButton,
+              shuffleMode && localStyles.activeShuffleButton,
+              playableIndices.length === 0 && localStyles.disabledButton,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Shuffle playlist"
+          >
+            <Ionicons name="shuffle" size={17} color="white" />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={playFromBeginning}
+            disabled={playableIndices.length === 0}
+            style={[
+              localStyles.headerActionButton,
+              playableIndices.length === 0 && localStyles.disabledButton,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Play playlist from beginning"
+          >
+            <Ionicons name="play" size={17} color="white" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
@@ -218,7 +314,12 @@ const PlaylistSongs = () => {
               </View>
 
               {isPlayable(item) && (
-                <TouchableOpacity onPress={() => playAt(index)}>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShuffleMode(false);
+                    playAt(index);
+                  }}
+                >
                   <Ionicons
                     name="play-circle"
                     size={28}
@@ -240,6 +341,7 @@ const PlaylistSongs = () => {
         currentIndex !== null &&
         (activeItem.audioUrl || activeYouTubeId) && (
           <AudioPlayer
+            key={`${activeItem.mediaType}:${activeItem.id}`}
             previewUrl={
               activeItem.mediaType === "video"
                 ? ""
@@ -249,16 +351,16 @@ const PlaylistSongs = () => {
             songName={activeItem.title}
             artistName={activeItem.creator}
             onClose={closePlayer}
-            onNext={() => {
-              const next = playableIndex(currentIndex, 1);
-              if (next !== null) playAt(next);
-            }}
-            onPrevious={() => {
-              const previous = playableIndex(currentIndex, -1);
-              if (previous !== null) playAt(previous);
-            }}
-            disableNext={playableIndex(currentIndex, 1) === null}
-            disablePrevious={playableIndex(currentIndex, -1) === null}
+            onNext={playNext}
+            onPrevious={playPrevious}
+            disableNext={
+              shuffleMode
+                ? playableIndices.length <= 1
+                : playableIndex(currentIndex, 1) === null
+            }
+            disablePrevious={
+              shuffleMode || playableIndex(currentIndex, -1) === null
+            }
             {...sourceProps}
           />
         )}
@@ -266,7 +368,36 @@ const PlaylistSongs = () => {
   );
 };
 
+const localStyles = StyleSheet.create({
+  headerTitle: {
+    flex: 1,
+    marginRight: 8,
+  },
+  headerActions: {
+    marginLeft: "auto",
+    marginRight: 16, 
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerActionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#1DB954",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeShuffleButton: {
+    backgroundColor: "#159447",
+  },
+  disabledButton: {
+    backgroundColor: "#A7A7A7",
+  },
+});
+
 export default PlaylistSongs;
+
 
 
 
