@@ -348,6 +348,7 @@ const PlaylistSongs = () => {
                 : activeItem.audioUrl ?? ""
             }
             youtubeVideoId={activeYouTubeId}
+            expandVideoOnLoad
             songName={activeItem.title}
             artistName={activeItem.creator}
             onClose={closePlayer}
@@ -375,7 +376,7 @@ const localStyles = StyleSheet.create({
   },
   headerActions: {
     marginLeft: "auto",
-    marginRight: 16, 
+    marginRight: 16,
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
@@ -397,6 +398,7 @@ const localStyles = StyleSheet.create({
 });
 
 export default PlaylistSongs;
+
 
 
 

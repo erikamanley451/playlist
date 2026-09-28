@@ -49,7 +49,9 @@ const AudioPlayer = ({
   sourceUrl,
 }: AudioPlayerProps) => {
   const [progressBarWidth, setProgressBarWidth] = useState(0);
-  const [videoExpanded, setVideoExpanded] = useState(false);
+  const [videoExpanded, setVideoExpanded] = useState(
+    () => Boolean(youtubeVideoId)
+  );
   const [youtubePlaying, setYoutubePlaying] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const owner = useRef(Symbol('AudioPlayer')).current;
@@ -161,9 +163,9 @@ const AudioPlayer = ({
     };
   }, [previewUrl, isDirectVideo, isYouTube]);
   useEffect(() => {
-    // Start each YouTube item collapsed. The outer green button reveals the
-    // embedded player; YouTube's own controls then handle playback.
-    setVideoExpanded(false);
+    // YouTube media opens expanded so its official player controls are
+    // immediately visible. Users can still collapse it with the chevron.
+    setVideoExpanded(Boolean(youtubeVideoId));
     setYoutubePlaying(false);
   }, [youtubeVideoId]);
   /*
@@ -557,6 +559,9 @@ const styles = StyleSheet.create({
   },
 });
 export default AudioPlayer;
+
+
+
 
 
 
