@@ -1,9 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useRef } from "react";
 import {
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { styles } from "../styles/style";
 
@@ -20,10 +21,22 @@ const SearchBar = ({
   onChangeText,
   onSubmit,
 }: SearchBarProps) => {
+  const inputRef = useRef<TextInput>(null);
+
+  const clearSearch = () => {
+    onChangeText("");
+
+    // Restore focus after the controlled value has been cleared.
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  };
+
   return (
     <View style={styles.searchContainer}>
       <View style={localStyles.inputWrapper}>
         <TextInput
+          ref={inputRef}
           placeholder={placeholder}
           value={value}
           onChangeText={onChangeText}
@@ -36,9 +49,10 @@ const SearchBar = ({
 
         {value.length > 0 && (
           <TouchableOpacity
-            onPress={() => onChangeText("")}
+            onPress={clearSearch}
             style={localStyles.clearButton}
             hitSlop={10}
+            activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel="Clear search"
           >
@@ -65,9 +79,6 @@ const localStyles = StyleSheet.create({
     top: "50%",
     width: 22,
     height: 22,
-    // The shared searchInput style includes vertical spacing, so move the
-    // button slightly above the wrapper's mathematical center to center it
-    // visually inside the gray input field.
     marginTop: -18,
     borderRadius: 11,
     backgroundColor: "#1DB954",
