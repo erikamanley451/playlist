@@ -51,7 +51,7 @@ This project began as a class project and was expanded afterward with stronger a
 
 ## Architecture
 
-![PlayList architecture](docs/architecture.png)
+![PlayList architecture](playlist57/docs/architecture.png)
 
 The Expo application acts as the client and coordinates three external service groups:
 
