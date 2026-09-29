@@ -25,7 +25,7 @@ export default function Index() {
         <Text style={styles.welcomeText}>Welcome to PlayList</Text>
 
         <Text style={styles.description}>
-          Your music. Your mood. Your PlayList.{"\n"}
+          Your media. Your mood. Your PlayList.{"\n"}
           Discover songs, podcasts, audiobooks, and videos — all in one
           beautifully integrated multimedia companion.
         </Text>

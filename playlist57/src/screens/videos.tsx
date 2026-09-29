@@ -205,9 +205,14 @@ const Videos = () => {
   const handleCreatePlaylist = async () => {
     const name = newPlaylistName.trim();
 
-    if (!name || !selectedVideo) return;
+    if (!name) {
+      Toast.show({ type: "error", text1: "Please enter a playlist name." });
+      return;
+    }
 
-    if (playlists.some((playlist) => playlist.name.toLowerCase() === name.toLowerCase())) {
+    if (!selectedVideo) return;
+
+    if (playlists.some((playlist) => playlist.name.trim().toLowerCase() === name.toLowerCase())) {
       Toast.show({ type: "error", text1: "Playlist already exists." });
       return;
     }
@@ -215,13 +220,13 @@ const Videos = () => {
     const updated = [...playlists, createPlaylist(name, selectedVideo)];
 
     if (await persistPlaylists(updated)) {
+      setNewPlaylistName("");
       Toast.show({
         type: "success",
-        text1: `Created ${name}`,
-        text2: "Video added.",
+        text1: `Created ${name} — video added`,
+        visibilityTime: 1500,
       });
-      setNewPlaylistName("");
-      closeAllModals();
+      setTimeout(closeAllModals, 1500);
     }
   };
 
@@ -229,8 +234,8 @@ const Videos = () => {
     if (!selectedVideo || !playlists[index]) return;
 
     if (playlists[index].songs.some((item) => item.id === selectedVideo.id)) {
-      Toast.show({ type: "info", text1: "Video already in playlist" });
-      closeAllModals();
+      Toast.show({ type: "info", text1: "Video already in playlist", visibilityTime: 1500 });
+      setTimeout(closeAllModals, 1500);
       return;
     }
 
@@ -241,7 +246,9 @@ const Videos = () => {
     );
 
     if (await persistPlaylists(updated)) {
-      Toast.show({ type: "success", text1: `Added to ${playlists[index].name}` });
+      Toast.show({ type: "success", text1: `Added to ${playlists[index].name}`, visibilityTime: 1500 });
+      setTimeout(closeAllModals, 1500);
+      return;
     }
 
     closeAllModals();
@@ -344,7 +351,9 @@ const Videos = () => {
             <Text style={styles.modalButtonText}>Create</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={closeAllModals}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        </View>
+        {newPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
 
       <Modal transparent visible={existingPlaylistModalVisible} animationType="slide" onRequestClose={closeAllModals}>
@@ -359,10 +368,11 @@ const Videos = () => {
             <Text style={{ textAlign: "center", color: "gray", marginBottom: 15 }}>No playlists yet.</Text>
           )}
           <TouchableOpacity onPress={closeAllModals}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        </View>
+        {existingPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
 
-      <Toast />
     </SafeAreaView>
   );
 };
@@ -396,6 +406,23 @@ const style = {
 };
 
 export default Videos;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -104,29 +104,53 @@ const Songs = () => {
 
   const handleCreatePlaylist = async () => {
     const name = newPlaylistName.trim();
+
     if (!name || !selectedSong) {
       Toast.show({ type: "error", text1: "Please enter a playlist name." });
       return;
     }
-    if (playlists.some((playlist) => playlist.name.toLowerCase() === name.toLowerCase())) {
+
+    const playlistAlreadyExists = playlists.some(
+      (playlist) =>
+        playlist.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+    if (playlistAlreadyExists) {
       Toast.show({ type: "error", text1: "Playlist already exists." });
       return;
     }
 
     const updated = [...playlists, createPlaylist(name, selectedSong)];
+
     if (await persist(updated)) {
-      Toast.show({ type: "success", text1: `Created ${name}` });
       setNewPlaylistName("");
-      closeAllModals();
+      Toast.show({
+        type: "success",
+        text1: `Created ${name} — song added`,
+        visibilityTime: 1500,
+      });
+
+      // Keep the modal mounted long enough for its Toast to be visible.
+      setTimeout(closeAllModals, 1500);
     }
   };
 
   const handleAddToExisting = async (index: number) => {
     if (!selectedSong) return;
 
-    if (playlists[index].songs.some((item) => item.id === selectedSong.id)) {
-      Toast.show({ type: "info", text1: "Song already in playlist" });
-      closeAllModals();
+    const selectedPlaylist = playlists[index];
+
+    if (
+      selectedPlaylist.songs.some((item) => item.id === selectedSong.id)
+    ) {
+      Toast.show({
+        type: "info",
+        text1: "Song already in playlist",
+        visibilityTime: 1200,
+      });
+
+      setTimeout(closeAllModals, 1200);
+
       return;
     }
 
@@ -137,8 +161,17 @@ const Songs = () => {
     );
 
     if (await persist(updated)) {
-      Toast.show({ type: "success", text1: `Added to ${playlists[index].name}` });
+      Toast.show({
+        type: "success",
+        text1: `Added to ${selectedPlaylist.name}`,
+        visibilityTime: 1200,
+      });
+
+      setTimeout(closeAllModals, 1200);
+
+      return;
     }
+
     closeAllModals();
   };
 
@@ -222,7 +255,8 @@ const Songs = () => {
           <TouchableOpacity onPress={closeAllModals}>
             <Text style={styles.modalCancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View></View>
+        </View>
+        </View>
       </Modal>
 
       <Modal transparent visible={newPlaylistModalVisible} animationType="slide" onRequestClose={closeAllModals}>
@@ -240,7 +274,9 @@ const Songs = () => {
           <TouchableOpacity onPress={closeAllModals}>
             <Text style={styles.modalCancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View></View>
+        </View>
+        {newPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
 
       <Modal transparent visible={existingPlaylistModalVisible} animationType="slide" onRequestClose={closeAllModals}>
@@ -261,13 +297,48 @@ const Songs = () => {
           <TouchableOpacity onPress={closeAllModals}>
             <Text style={styles.modalCancelText}>Cancel</Text>
           </TouchableOpacity>
-        </View></View>
+        </View>
+        {existingPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
     </SafeAreaView>
   );
 };
 
 export default Songs;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

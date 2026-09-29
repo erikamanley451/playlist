@@ -6,13 +6,13 @@ import { useEffect, useState } from "react";
 import {
   Alert,
   Image,
-  SafeAreaView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { auth, db } from "../../services/firebase";
 type UserProfile = {
   fullName: string;

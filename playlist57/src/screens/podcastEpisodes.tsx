@@ -73,13 +73,21 @@ const PodcastEpisodes = () => {
 
   const handleCreatePlaylist = async () => {
     const name = newPlaylistName.trim();
-    if (!name || !selectedEpisode) return;
-    if (playlists.some((p) => p.name.toLowerCase() === name.toLowerCase()))
+    if (!name) {
+      Toast.show({ type: "error", text1: "Please enter a playlist name." });
+      return;
+    }
+    if (!selectedEpisode) return;
+    if (playlists.some((p) => p.name.trim().toLowerCase() === name.toLowerCase()))
       return Toast.show({ type: "error", text1: "Playlist already exists." });
     if (await persist([...playlists, createPlaylist(name, selectedEpisode)])) {
-      Toast.show({ type: "success", text1: `Created ${name}` });
       setNewPlaylistName("");
-      closeAllModals();
+      Toast.show({
+        type: "success",
+        text1: `Created ${name} — episode added`,
+        visibilityTime: 1500,
+      });
+      setTimeout(closeAllModals, 1500);
     }
   };
 
@@ -87,13 +95,18 @@ const PodcastEpisodes = () => {
     if (!selectedEpisode) return;
     const exists = playlists[index].songs.some((item) => item.id === selectedEpisode.id);
     if (exists) {
-      Toast.show({ type: "info", text1: "Episode already in playlist" });
-      return closeAllModals();
+      Toast.show({ type: "info", text1: "Episode already in playlist", visibilityTime: 1500 });
+      setTimeout(closeAllModals, 1500);
+      return;
     }
     const updated = playlists.map((playlist, playlistIndex) =>
       playlistIndex === index ? { ...playlist, songs: [...playlist.songs, selectedEpisode] } : playlist
     );
-    if (await persist(updated)) Toast.show({ type: "success", text1: `Added to ${playlists[index].name}` });
+    if (await persist(updated)) {
+      Toast.show({ type: "success", text1: `Added to ${playlists[index].name}`, visibilityTime: 1500 });
+      setTimeout(closeAllModals, 1500);
+      return;
+    }
     closeAllModals();
   };
 
@@ -211,7 +224,9 @@ const PodcastEpisodes = () => {
             <Text style={styles.modalButtonText}>Create</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={closeAllModals}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        </View>
+        {newPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
 
       <Modal transparent visible={existingPlaylistModalVisible} animationType="slide">
@@ -223,7 +238,9 @@ const PodcastEpisodes = () => {
             </TouchableOpacity>
           ))}
           <TouchableOpacity onPress={closeAllModals}><Text style={styles.modalCancelText}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        </View>
+        {existingPlaylistModalVisible && <Toast />}
+        </View>
       </Modal>
 
       {isFocused && activeEpisode?.audioUrl && currentIndex !== null && (
@@ -258,5 +275,6 @@ const localStyles = StyleSheet.create({
 });
 
 export default PodcastEpisodes;
+
 
 

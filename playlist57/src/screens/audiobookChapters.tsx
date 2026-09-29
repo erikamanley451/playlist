@@ -143,7 +143,7 @@ const AudiobookChapters = () => {
     if (
       playlists.some(
         (playlist) =>
-          playlist.name.toLowerCase() ===
+          playlist.name.trim().toLowerCase() ===
           name.toLowerCase()
       )
     ) {
@@ -160,13 +160,19 @@ const AudiobookChapters = () => {
     ];
 
     if (await persist(updated)) {
-      Toast.show({
-        type: "success",
-        text1: `Created ${name}`,
-      });
-
       setNewPlaylistName("");
-      closeAllModals();
+
+      // Allow the Firestore/state update to finish rendering while the
+      // modal Toast remains mounted.
+      setTimeout(() => {
+        Toast.show({
+          type: "success",
+          text1: `Created ${name} — audiobook added`,
+          visibilityTime: 1500,
+        });
+      }, 100);
+
+      setTimeout(closeAllModals, 1800);
     }
   };
 
@@ -181,9 +187,9 @@ const AudiobookChapters = () => {
       Toast.show({
         type: "info",
         text1: "Audiobook already in playlist",
+        visibilityTime: 1500,
       });
-
-      closeAllModals();
+      setTimeout(closeAllModals, 1500);
       return;
     }
 
@@ -201,10 +207,16 @@ const AudiobookChapters = () => {
     );
 
     if (await persist(updated)) {
-      Toast.show({
-        type: "success",
-        text1: `Added to ${selectedPlaylist.name}`,
-      });
+      setTimeout(() => {
+        Toast.show({
+          type: "success",
+          text1: `Added to ${selectedPlaylist.name}`,
+          visibilityTime: 1500,
+        });
+      }, 100);
+
+      setTimeout(closeAllModals, 1800);
+      return;
     }
 
     closeAllModals();
@@ -468,6 +480,7 @@ const AudiobookChapters = () => {
               </Text>
             </TouchableOpacity>
           </View>
+          {newPlaylistModalVisible && <Toast />}
         </View>
       </Modal>
 
@@ -503,6 +516,7 @@ const AudiobookChapters = () => {
               </Text>
             </TouchableOpacity>
           </View>
+          {existingPlaylistModalVisible && <Toast />}
         </View>
       </Modal>
 
@@ -526,3 +540,5 @@ const AudiobookChapters = () => {
 };
 
 export default AudiobookChapters;
+
+
