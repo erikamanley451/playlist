@@ -1,6 +1,6 @@
 # PlayList
 
-<img src="./src/assets/images/appicon1.png" width="160" alt="PlayList app icon" />
+<img src="playlist57/src/assets/images/appicon1.png" width="160" alt="PlayList app icon" />
 
 
 PlayList is a cross-platform media discovery and playlist application built with Expo and React Native. Users can discover songs, podcasts, audiobooks, and YouTube videos, preview supported media, and organize different media types into cloud-synced playlists.
