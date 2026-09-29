@@ -102,8 +102,8 @@ Install or create the following before running the application:
 ### 1. Clone the repository
 
 ```bash
-git clone YOUR_REPOSITORY_URL
-cd YOUR_REPOSITORY_FOLDER
+git clone https://github.com/erikamanley451/playlist.git
+cd playlist
 ```
 
 Replace the placeholder values with the URL and folder name for your repository.
