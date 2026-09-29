@@ -106,8 +106,6 @@ git clone https://github.com/erikamanley451/playlist.git
 cd playlist
 ```
 
-Replace the placeholder values with the URL and folder name for your repository.
-
 ### 2. Install dependencies
 
 ```bash
