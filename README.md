@@ -87,6 +87,11 @@ This project demonstrates:
 - Iterating on usability issues discovered through simulator testing
 - Balancing technical capability with API licensing and platform limitations
 
+## 🎥 Demo
+
+[▶️ Watch the PlayList Demo](https://github.com/erikamanley451/playlist/releases/download/demo-v1/playlistDemo.mp4)
+
+
 ## Running the Project
 
 ### Prerequisites
