@@ -89,7 +89,7 @@ This project demonstrates:
 
 ## 🎥 Demo
 
-[▶️ Watch the PlayList Demo](https://github.com/erikamanley451/playlist/releases/download/demo-v1/playlistDemo.mp4)
+[Watch the PlayList Demo](https://drive.google.com/file/d/1wG-nJruzQhfre75ax-5c5MV62Yhq62CQ/view?usp=sharing)
 
 
 ## Running the Project
