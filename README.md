@@ -109,6 +109,7 @@ Install or create the following before running the application:
 ```bash
 git clone https://github.com/erikamanley451/playlist.git
 cd playlist
+cd playlist57
 ```
 
 ### 2. Install dependencies
