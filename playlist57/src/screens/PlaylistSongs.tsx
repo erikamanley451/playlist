@@ -5,9 +5,14 @@ import {
   useRoute,
 } from "@react-navigation/native";
 import { onAuthStateChanged } from "firebase/auth";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Image,
   KeyboardAvoidingView,
@@ -26,7 +31,11 @@ import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
-import { publishPlaylist } from "../services/playlistSharing";
+import {
+  isPlaylistShared,
+  publishPlaylist,
+  unsharePlaylist,
+} from "../services/playlistSharing";
 import type { StoredPlaylist } from "../services/playlistStorage";
 import {
   loadPlaylists,
@@ -88,50 +97,75 @@ const PlaylistSongs = () => {
     playlist?: string;
   };
 
-  const passedPlaylist = useMemo<StoredPlaylist | null>(() => {
-    if (!playlist) return null;
+  const passedPlaylist =
+    useMemo<StoredPlaylist | null>(() => {
+      if (!playlist) return null;
 
-    try {
-      return JSON.parse(playlist);
-    } catch {
-      return null;
-    }
-  }, [playlist]);
+      try {
+        return JSON.parse(playlist);
+      } catch {
+        return null;
+      }
+    }, [playlist]);
 
   const [uid, setUid] = useState(
     auth.currentUser?.uid ?? null
   );
 
-  const [songs, setSongs] = useState<ITunesMediaItem[]>([]);
+  const [songs, setSongs] = useState<
+    ITunesMediaItem[]
+  >([]);
+
   const [activeItem, setActiveItem] =
     useState<ITunesMediaItem | null>(null);
+
   const [currentIndex, setCurrentIndex] =
     useState<number | null>(null);
-  const [shuffleMode, setShuffleMode] = useState(false);
+
+  const [shuffleMode, setShuffleMode] =
+    useState(false);
+
   const [loading, setLoading] = useState(true);
 
   // Playlist rename state
-  const [playlistName, setPlaylistName] = useState(
-    passedPlaylist?.name ?? "Playlist"
-  );
-  const [renameVisible, setRenameVisible] = useState(false);
-  const [renameValue, setRenameValue] = useState(
-    passedPlaylist?.name ?? ""
-  );
-  const [renaming, setRenaming] = useState(false);
+  const [playlistName, setPlaylistName] =
+    useState(
+      passedPlaylist?.name ?? "Playlist"
+    );
+
+  const [renameVisible, setRenameVisible] =
+    useState(false);
+
+  const [renameValue, setRenameValue] =
+    useState(
+      passedPlaylist?.name ?? ""
+    );
+
+  const [renaming, setRenaming] =
+    useState(false);
 
   // Playlist sharing state
-  const [sharing, setSharing] = useState(false);
+  const [sharing, setSharing] =
+    useState(false);
+
+  const [unsharing, setUnsharing] =
+    useState(false);
+
+  const [shared, setShared] =
+    useState(false);
 
   const playableIndices = useMemo(
     () =>
-      songs.reduce<number[]>((indices, item, index) => {
-        if (isPlayable(item)) {
-          indices.push(index);
-        }
+      songs.reduce<number[]>(
+        (indices, item, index) => {
+          if (isPlayable(item)) {
+            indices.push(index);
+          }
 
-        return indices;
-      }, []),
+          return indices;
+        },
+        []
+      ),
     [songs]
   );
 
@@ -156,10 +190,12 @@ const PlaylistSongs = () => {
       .then((allPlaylists) => {
         const current =
           allPlaylists.find(
-            (item) => item.id === passedPlaylist.id
+            (item) =>
+              item.id === passedPlaylist.id
           ) ??
           allPlaylists.find(
-            (item) => item.name === passedPlaylist.name
+            (item) =>
+              item.name === passedPlaylist.name
           );
 
         setSongs(current?.songs ?? []);
@@ -170,7 +206,11 @@ const PlaylistSongs = () => {
         }
       })
       .catch((error) => {
-        console.error("Failed to load playlist:", error);
+        console.error(
+          "Failed to load playlist:",
+          error
+        );
+
         setSongs([]);
 
         Toast.show({
@@ -183,6 +223,84 @@ const PlaylistSongs = () => {
         setLoading(false);
       });
   }, [uid, passedPlaylist]);
+
+  /*
+   * Check whether the stable shared document already exists.
+   * This makes the Unshare button return after reopening the screen.
+   */
+  useEffect(() => {
+    if (!uid || !passedPlaylist?.id) {
+      setShared(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    isPlaylistShared({
+      ownerId: uid,
+      playlistId: passedPlaylist.id,
+    })
+      .then((isShared) => {
+        if (!cancelled) {
+          setShared(isShared);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "Could not check sharing status:",
+          error
+        );
+
+        if (!cancelled) {
+          setShared(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [uid, passedPlaylist?.id]);
+
+  /*
+   * If an already-shared playlist changes, update its public
+   * Firestore snapshot after a short delay.
+   */
+  useEffect(() => {
+    if (
+      !shared ||
+      !uid ||
+      !passedPlaylist?.id ||
+      loading ||
+      songs.length === 0
+    ) {
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      publishPlaylist({
+        ownerId: uid,
+        playlistId: passedPlaylist.id,
+        playlistName,
+        items: songs,
+      }).catch((error) => {
+        console.error(
+          "Failed to synchronize shared playlist:",
+          error
+        );
+      });
+    }, 500);
+
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [
+    shared,
+    uid,
+    passedPlaylist?.id,
+    playlistName,
+    songs,
+    loading,
+  ]);
 
   useEffect(() => {
     if (!isFocused) {
@@ -206,7 +324,13 @@ const PlaylistSongs = () => {
   };
 
   const renamePlaylist = async () => {
-    if (!uid || !passedPlaylist || renaming) return;
+    if (
+      !uid ||
+      !passedPlaylist ||
+      renaming
+    ) {
+      return;
+    }
 
     const newName = renameValue.trim();
 
@@ -214,8 +338,10 @@ const PlaylistSongs = () => {
       Toast.show({
         type: "error",
         text1: "Enter a playlist name",
-        text2: "The playlist name cannot be empty.",
+        text2:
+          "The playlist name cannot be empty.",
       });
+
       return;
     }
 
@@ -227,43 +353,55 @@ const PlaylistSongs = () => {
     try {
       setRenaming(true);
 
-      const allPlaylists = await loadPlaylists(uid);
+      const allPlaylists =
+        await loadPlaylists(uid);
 
-      const duplicateExists = allPlaylists.some((item) => {
-        const isCurrentPlaylist = passedPlaylist.id
-          ? item.id === passedPlaylist.id
-          : item.name === playlistName;
+      const duplicateExists =
+        allPlaylists.some((item) => {
+          const isCurrentPlaylist =
+            passedPlaylist.id
+              ? item.id === passedPlaylist.id
+              : item.name === playlistName;
 
-        return (
-          !isCurrentPlaylist &&
-          item.name.trim().toLowerCase() ===
-            newName.toLowerCase()
-        );
-      });
+          return (
+            !isCurrentPlaylist &&
+            item.name
+              .trim()
+              .toLowerCase() ===
+              newName.toLowerCase()
+          );
+        });
 
       if (duplicateExists) {
         Toast.show({
           type: "error",
           text1: "Playlist already exists",
-          text2: `You already have a playlist named “${newName}”.`,
+          text2:
+            `You already have a playlist named “${newName}”.`,
         });
+
         return;
       }
 
-      const updatedPlaylists = allPlaylists.map((item) => {
-        const matches = passedPlaylist.id
-          ? item.id === passedPlaylist.id
-          : item.name === playlistName;
+      const updatedPlaylists =
+        allPlaylists.map((item) => {
+          const matches =
+            passedPlaylist.id
+              ? item.id === passedPlaylist.id
+              : item.name === playlistName;
 
-        return matches
-          ? {
-              ...item,
-              name: newName,
-            }
-          : item;
-      });
+          return matches
+            ? {
+                ...item,
+                name: newName,
+              }
+            : item;
+        });
 
-      await savePlaylists(uid, updatedPlaylists);
+      await savePlaylists(
+        uid,
+        updatedPlaylists
+      );
 
       setPlaylistName(newName);
       setRenameValue(newName);
@@ -275,7 +413,10 @@ const PlaylistSongs = () => {
         text2: `Renamed to “${newName}”.`,
       });
     } catch (error) {
-      console.error("Failed to rename playlist:", error);
+      console.error(
+        "Failed to rename playlist:",
+        error
+      );
 
       Toast.show({
         type: "error",
@@ -288,14 +429,27 @@ const PlaylistSongs = () => {
   };
 
   const handleSharePlaylist = async () => {
-    if (sharing) return;
+    if (sharing || unsharing) return;
 
     if (!uid) {
       Toast.show({
         type: "error",
         text1: "Please sign in",
-        text2: "You must be signed in to share a playlist.",
+        text2:
+          "You must be signed in to share a playlist.",
       });
+
+      return;
+    }
+
+    if (!passedPlaylist?.id) {
+      Toast.show({
+        type: "error",
+        text1: "Could not share playlist",
+        text2:
+          "This playlist does not have an ID.",
+      });
+
       return;
     }
 
@@ -303,8 +457,10 @@ const PlaylistSongs = () => {
       Toast.show({
         type: "info",
         text1: "Playlist is empty",
-        text2: "Add media before sharing this playlist.",
+        text2:
+          "Add media before sharing this playlist.",
       });
+
       return;
     }
 
@@ -315,22 +471,28 @@ const PlaylistSongs = () => {
         text2:
           "EXPO_PUBLIC_SHARED_PLAYLIST_URL is missing.",
       });
+
       return;
     }
 
     try {
       setSharing(true);
 
-      const shareId = await publishPlaylist({
-        ownerId: uid,
-        playlistName,
-        items: songs,
-      });
+      const shareId =
+        await publishPlaylist({
+          ownerId: uid,
+          playlistId: passedPlaylist.id,
+          playlistName,
+          items: songs,
+        });
 
-      const baseUrl = SHARED_PLAYLIST_SITE.replace(
-        /\/+$/,
-        ""
-      );
+      setShared(true);
+
+      const baseUrl =
+        SHARED_PLAYLIST_SITE.replace(
+          /\/+$/,
+          ""
+        );
 
       const shareUrl =
         `${baseUrl}/?playlist=${encodeURIComponent(
@@ -344,7 +506,10 @@ const PlaylistSongs = () => {
         url: shareUrl,
       });
     } catch (error) {
-      console.error("Failed to share playlist:", error);
+      console.error(
+        "Failed to share playlist:",
+        error
+      );
 
       Toast.show({
         type: "error",
@@ -356,13 +521,76 @@ const PlaylistSongs = () => {
     }
   };
 
+  const handleUnsharePlaylist =
+    async () => {
+      if (
+        !uid ||
+        !passedPlaylist?.id ||
+        unsharing
+      ) {
+        return;
+      }
+
+      try {
+        setUnsharing(true);
+
+        await unsharePlaylist({
+          ownerId: uid,
+          playlistId: passedPlaylist.id,
+        });
+
+        setShared(false);
+
+        Toast.show({
+          type: "success",
+          text1: "Playlist unshared",
+          text2:
+            "The public link is no longer available.",
+        });
+      } catch (error) {
+        console.error(
+          "Failed to unshare playlist:",
+          error
+        );
+
+        Toast.show({
+          type: "error",
+          text1:
+            "Could not unshare playlist",
+          text2: "Please try again.",
+        });
+      } finally {
+        setUnsharing(false);
+      }
+    };
+
+  const confirmUnsharePlaylist = () => {
+    Alert.alert(
+      "Unshare playlist?",
+      "Anyone with the public link will no longer be able to view this playlist.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Unshare",
+          style: "destructive",
+          onPress: () =>
+            void handleUnsharePlaylist(),
+        },
+      ]
+    );
+  };
+
   const playableIndex = (
     start: number,
     direction: 1 | -1
   ) => {
     for (
       let index = start + direction;
-      index >= 0 && index < songs.length;
+      index >= 0 &&
+      index < songs.length;
       index += direction
     ) {
       if (isPlayable(songs[index])) {
@@ -376,16 +604,23 @@ const PlaylistSongs = () => {
   const playAt = (index: number) => {
     const item = songs[index];
 
-    if (!item || !isPlayable(item)) return;
+    if (!item || !isPlayable(item)) {
+      return;
+    }
 
     setCurrentIndex(index);
     setActiveItem(item);
   };
 
   const playFromBeginning = () => {
-    const firstPlayableIndex = playableIndices[0];
+    const firstPlayableIndex =
+      playableIndices[0];
 
-    if (firstPlayableIndex === undefined) return;
+    if (
+      firstPlayableIndex === undefined
+    ) {
+      return;
+    }
 
     setShuffleMode(false);
     playAt(firstPlayableIndex);
@@ -394,24 +629,32 @@ const PlaylistSongs = () => {
   const randomPlayableIndex = (
     indexToExclude?: number | null
   ) => {
-    const choices = playableIndices.filter(
-      (index) => index !== indexToExclude
-    );
+    const choices =
+      playableIndices.filter(
+        (index) =>
+          index !== indexToExclude
+      );
 
     if (choices.length === 0) {
       return playableIndices[0] ?? null;
     }
 
     return (
-      choices[Math.floor(Math.random() * choices.length)] ??
-      null
+      choices[
+        Math.floor(
+          Math.random() * choices.length
+        )
+      ] ?? null
     );
   };
 
   const startShuffle = () => {
-    const randomIndex = randomPlayableIndex(currentIndex);
+    const randomIndex =
+      randomPlayableIndex(currentIndex);
 
-    if (randomIndex === null) return;
+    if (randomIndex === null) {
+      return;
+    }
 
     setShuffleMode(true);
     playAt(randomIndex);
@@ -430,9 +673,15 @@ const PlaylistSongs = () => {
   };
 
   const playPrevious = () => {
-    if (shuffleMode || currentIndex === null) return;
+    if (
+      shuffleMode ||
+      currentIndex === null
+    ) {
+      return;
+    }
 
-    const previous = playableIndex(currentIndex, -1);
+    const previous =
+      playableIndex(currentIndex, -1);
 
     if (previous !== null) {
       playAt(previous);
@@ -445,39 +694,55 @@ const PlaylistSongs = () => {
     setShuffleMode(false);
   };
 
-  const handleDelete = async (indexToRemove: number) => {
-    if (!uid || !passedPlaylist) return;
+  const handleDelete = async (
+    indexToRemove: number
+  ) => {
+    if (!uid || !passedPlaylist) {
+      return;
+    }
 
     try {
       const updatedSongs = songs.filter(
-        (_, index) => index !== indexToRemove
+        (_, index) =>
+          index !== indexToRemove
       );
 
-      const allPlaylists = await loadPlaylists(uid);
+      const allPlaylists =
+        await loadPlaylists(uid);
 
-      const updatedPlaylists = allPlaylists.map((item) => {
-        const matches = passedPlaylist.id
-          ? item.id === passedPlaylist.id
-          : item.name === playlistName;
+      const updatedPlaylists =
+        allPlaylists.map((item) => {
+          const matches =
+            passedPlaylist.id
+              ? item.id === passedPlaylist.id
+              : item.name === playlistName;
 
-        return matches
-          ? {
-              ...item,
-              songs: updatedSongs,
-            }
-          : item;
-      });
+          return matches
+            ? {
+                ...item,
+                songs: updatedSongs,
+              }
+            : item;
+        });
 
-      await savePlaylists(uid, updatedPlaylists);
+      await savePlaylists(
+        uid,
+        updatedPlaylists
+      );
+
       setSongs(updatedSongs);
 
-      if (currentIndex === indexToRemove) {
+      if (
+        currentIndex === indexToRemove
+      ) {
         closePlayer();
       } else if (
         currentIndex !== null &&
         indexToRemove < currentIndex
       ) {
-        setCurrentIndex(currentIndex - 1);
+        setCurrentIndex(
+          currentIndex - 1
+        );
       }
     } catch (error) {
       console.error(
@@ -503,15 +768,20 @@ const PlaylistSongs = () => {
           sourceAttribution:
             "Preview provided courtesy of iTunes",
           sourceLabel: "Apple Music",
-          sourceUrl: activeItem.externalUrl,
+          sourceUrl:
+            activeItem.externalUrl,
         }
-      : activeItem.mediaType === "audiobook"
+      : activeItem.mediaType ===
+          "audiobook"
         ? {
-            sourceAttribution: "Preview provided by Apple",
+            sourceAttribution:
+              "Preview provided by Apple",
             sourceLabel: "Apple Books",
-            sourceUrl: activeItem.externalUrl,
+            sourceUrl:
+              activeItem.externalUrl,
           }
-        : activeItem.mediaType === "video"
+        : activeItem.mediaType ===
+            "video"
           ? {
               sourceLabel: "YouTube",
               sourceUrl:
@@ -519,16 +789,24 @@ const PlaylistSongs = () => {
                 activeItem.audioUrl,
             }
           : {
-              sourceLabel: "Apple Podcasts",
-              sourceUrl: activeItem.externalUrl,
+              sourceLabel:
+                "Apple Podcasts",
+              sourceUrl:
+                activeItem.externalUrl,
             }
     : {};
 
   return (
-    <SafeAreaView style={styles.safeAreaContainer}>
-      <View style={styles.headerContainer}>
+    <SafeAreaView
+      style={styles.safeAreaContainer}
+    >
+      <View
+        style={styles.headerContainer}
+      >
         <TouchableOpacity
-          onPress={() => navigation.goBack()}
+          onPress={() =>
+            navigation.goBack()
+          }
           style={styles.backButton}
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -541,16 +819,23 @@ const PlaylistSongs = () => {
         </TouchableOpacity>
 
         <Text
-          style={[styles.headerTitle, localStyles.headerTitle]}
+          style={[
+            styles.headerTitle,
+            localStyles.headerTitle,
+          ]}
           numberOfLines={1}
         >
           {playlistName}
         </Text>
 
-        <View style={localStyles.headerActions}>
+        <View
+          style={localStyles.headerActions}
+        >
           <TouchableOpacity
             onPress={openRenameModal}
-            style={localStyles.secondaryHeaderButton}
+            style={
+              localStyles.secondaryHeaderButton
+            }
             accessibilityRole="button"
             accessibilityLabel="Rename playlist"
           >
@@ -562,11 +847,23 @@ const PlaylistSongs = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => void handleSharePlaylist()}
-            disabled={sharing || songs.length === 0}
-            style={localStyles.secondaryHeaderButton}
+            onPress={() =>
+              void handleSharePlaylist()
+            }
+            disabled={
+              sharing ||
+              unsharing ||
+              songs.length === 0
+            }
+            style={
+              localStyles.secondaryHeaderButton
+            }
             accessibilityRole="button"
-            accessibilityLabel="Share playlist"
+            accessibilityLabel={
+              shared
+                ? "Share updated playlist"
+                : "Share playlist"
+            }
           >
             {sharing ? (
               <ActivityIndicator
@@ -586,14 +883,46 @@ const PlaylistSongs = () => {
             )}
           </TouchableOpacity>
 
+          {shared && (
+            <TouchableOpacity
+              onPress={
+                confirmUnsharePlaylist
+              }
+              disabled={
+                sharing || unsharing
+              }
+              style={
+                localStyles.secondaryHeaderButton
+              }
+              accessibilityRole="button"
+              accessibilityLabel="Unshare playlist"
+            >
+              {unsharing ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#D32F2F"
+                />
+              ) : (
+                <Ionicons
+                  name="cloud-offline-outline"
+                  size={20}
+                  color="#D32F2F"
+                />
+              )}
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             onPress={startShuffle}
-            disabled={playableIndices.length === 0}
+            disabled={
+              playableIndices.length === 0
+            }
             style={[
               localStyles.headerActionButton,
               shuffleMode &&
                 localStyles.activeShuffleButton,
-              playableIndices.length === 0 &&
+              playableIndices.length ===
+                0 &&
                 localStyles.disabledButton,
             ]}
             accessibilityRole="button"
@@ -608,10 +937,13 @@ const PlaylistSongs = () => {
 
           <TouchableOpacity
             onPress={playFromBeginning}
-            disabled={playableIndices.length === 0}
+            disabled={
+              playableIndices.length === 0
+            }
             style={[
               localStyles.headerActionButton,
-              playableIndices.length === 0 &&
+              playableIndices.length ===
+                0 &&
                 localStyles.disabledButton,
             ]}
             accessibilityRole="button"
@@ -630,10 +962,14 @@ const PlaylistSongs = () => {
         <ActivityIndicator
           size="large"
           color="#1DB954"
-          style={{ marginTop: 50 }}
+          style={{
+            marginTop: 50,
+          }}
         />
       ) : songs.length === 0 ? (
-        <Text style={localStyles.emptyText}>
+        <Text
+          style={localStyles.emptyText}
+        >
           No media in this playlist.
         </Text>
       ) : (
@@ -645,22 +981,30 @@ const PlaylistSongs = () => {
           contentContainerStyle={
             activeItem
               ? {
-                  paddingBottom: activeYouTubeId
-                    ? 470
-                    : 200,
+                  paddingBottom:
+                    activeYouTubeId
+                      ? 470
+                      : 200,
                 }
               : undefined
           }
-          renderItem={({ item, index }) => (
+          renderItem={({
+            item,
+            index,
+          }) => (
             <View style={styles.songCard}>
               {item.artworkUrl && (
                 <Image
-                  source={{ uri: item.artworkUrl }}
+                  source={{
+                    uri: item.artworkUrl,
+                  }}
                   style={styles.songImage}
                 />
               )}
 
-              <View style={styles.songDetails}>
+              <View
+                style={styles.songDetails}
+              >
                 <Text
                   style={styles.songTitle}
                   numberOfLines={1}
@@ -683,7 +1027,9 @@ const PlaylistSongs = () => {
                     playAt(index);
                   }}
                   accessibilityRole="button"
-                  accessibilityLabel={`Play ${item.title}`}
+                  accessibilityLabel={
+                    `Play ${item.title}`
+                  }
                 >
                   <Ionicons
                     name="play-circle"
@@ -694,9 +1040,13 @@ const PlaylistSongs = () => {
               )}
 
               <TouchableOpacity
-                onPress={() => void handleDelete(index)}
+                onPress={() =>
+                  void handleDelete(index)
+                }
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${item.title}`}
+                accessibilityLabel={
+                  `Remove ${item.title}`
+                }
               >
                 <Ionicons
                   name="trash"
@@ -713,16 +1063,28 @@ const PlaylistSongs = () => {
         transparent
         visible={renameVisible}
         animationType="fade"
-        onRequestClose={closeRenameModal}
+        onRequestClose={
+          closeRenameModal
+        }
       >
         <KeyboardAvoidingView
           behavior={
-            Platform.OS === "ios" ? "padding" : undefined
+            Platform.OS === "ios"
+              ? "padding"
+              : undefined
           }
-          style={localStyles.modalOverlay}
+          style={
+            localStyles.modalOverlay
+          }
         >
-          <View style={localStyles.modalContent}>
-            <Text style={localStyles.modalTitle}>
+          <View
+            style={
+              localStyles.modalContent
+            }
+          >
+            <Text
+              style={localStyles.modalTitle}
+            >
               Rename Playlist
             </Text>
 
@@ -738,18 +1100,25 @@ const PlaylistSongs = () => {
               onSubmitEditing={() =>
                 void renamePlaylist()
               }
-              style={localStyles.renameInput}
+              style={
+                localStyles.renameInput
+              }
             />
 
             <TouchableOpacity
-              onPress={() => void renamePlaylist()}
+              onPress={() =>
+                void renamePlaylist()
+              }
               disabled={
-                renaming || renameValue.trim().length === 0
+                renaming ||
+                renameValue.trim()
+                  .length === 0
               }
               style={[
                 localStyles.saveButton,
                 (renaming ||
-                  renameValue.trim().length === 0) &&
+                  renameValue.trim()
+                    .length === 0) &&
                   localStyles.disabledButton,
               ]}
             >
@@ -759,7 +1128,11 @@ const PlaylistSongs = () => {
                   color="white"
                 />
               ) : (
-                <Text style={localStyles.saveButtonText}>
+                <Text
+                  style={
+                    localStyles.saveButtonText
+                  }
+                >
                   Save
                 </Text>
               )}
@@ -768,9 +1141,15 @@ const PlaylistSongs = () => {
             <TouchableOpacity
               onPress={closeRenameModal}
               disabled={renaming}
-              style={localStyles.cancelButton}
+              style={
+                localStyles.cancelButton
+              }
             >
-              <Text style={localStyles.cancelButtonText}>
+              <Text
+                style={
+                  localStyles.cancelButtonText
+                }
+              >
                 Cancel
               </Text>
             </TouchableOpacity>
@@ -781,29 +1160,45 @@ const PlaylistSongs = () => {
       {isFocused &&
         activeItem &&
         currentIndex !== null &&
-        (activeItem.audioUrl || activeYouTubeId) && (
+        (activeItem.audioUrl ||
+          activeYouTubeId) && (
           <AudioPlayer
-            key={`${activeItem.mediaType}:${activeItem.id}`}
-            previewUrl={
-              activeItem.mediaType === "video"
-                ? ""
-                : activeItem.audioUrl ?? ""
+            key={
+              `${activeItem.mediaType}:${activeItem.id}`
             }
-            youtubeVideoId={activeYouTubeId}
+            previewUrl={
+              activeItem.mediaType ===
+              "video"
+                ? ""
+                : activeItem.audioUrl ??
+                  ""
+            }
+            youtubeVideoId={
+              activeYouTubeId
+            }
             expandVideoOnLoad
             songName={activeItem.title}
-            artistName={activeItem.creator}
+            artistName={
+              activeItem.creator
+            }
             onClose={closePlayer}
             onNext={playNext}
             onPrevious={playPrevious}
             disableNext={
               shuffleMode
-                ? playableIndices.length <= 1
-                : playableIndex(currentIndex, 1) === null
+                ? playableIndices.length <=
+                  1
+                : playableIndex(
+                    currentIndex,
+                    1
+                  ) === null
             }
             disablePrevious={
               shuffleMode ||
-              playableIndex(currentIndex, -1) === null
+              playableIndex(
+                currentIndex,
+                -1
+              ) === null
             }
             {...sourceProps}
           />
@@ -817,6 +1212,7 @@ const localStyles = StyleSheet.create({
     flex: 1,
     marginRight: 2,
   },
+
   headerActions: {
     marginLeft: "auto",
     marginRight: 12,
@@ -824,12 +1220,14 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
+
   secondaryHeaderButton: {
     width: 28,
     height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
+
   headerActionButton: {
     width: 32,
     height: 32,
@@ -838,35 +1236,43 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   activeShuffleButton: {
     backgroundColor: "#159447",
   },
+
   disabledButton: {
     backgroundColor: "#A7A7A7",
   },
+
   emptyText: {
     textAlign: "center",
     marginTop: 50,
     color: "#666",
   },
+
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     paddingHorizontal: 24,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor:
+      "rgba(0, 0, 0, 0.5)",
   },
+
   modalContent: {
     width: "100%",
     padding: 20,
     borderRadius: 16,
     backgroundColor: "white",
   },
+
   modalTitle: {
     marginBottom: 16,
     fontSize: 20,
     fontWeight: "700",
     color: "#222",
   },
+
   renameInput: {
     height: 48,
     paddingHorizontal: 14,
@@ -877,6 +1283,7 @@ const localStyles = StyleSheet.create({
     fontSize: 16,
     color: "#222",
   },
+
   saveButton: {
     height: 48,
     marginTop: 16,
@@ -885,16 +1292,19 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   saveButtonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "700",
   },
+
   cancelButton: {
     alignItems: "center",
     paddingTop: 16,
     paddingBottom: 4,
   },
+
   cancelButtonText: {
     color: "#666",
     fontSize: 16,

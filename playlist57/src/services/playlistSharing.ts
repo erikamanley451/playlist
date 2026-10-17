@@ -1,7 +1,9 @@
 import {
-    addDoc,
-    collection,
-    serverTimestamp,
+  deleteDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  setDoc,
 } from "firebase/firestore";
 
 import { db } from "./firebase";
@@ -30,15 +32,29 @@ const getShareableUrl = (
   return null;
 };
 
+/*
+ * Each private playlist receives one predictable shared document.
+ * Sharing again updates the existing document instead of creating
+ * another Firestore document.
+ */
+const getShareId = (
+  ownerId: string,
+  playlistId: string
+) => `${ownerId}_${playlistId}`;
+
 export const publishPlaylist = async ({
   ownerId,
+  playlistId,
   playlistName,
   items,
 }: {
   ownerId: string;
+  playlistId: string;
   playlistName: string;
   items: ITunesMediaItem[];
 }) => {
+  const shareId = getShareId(ownerId, playlistId);
+
   const safeItems: SharedPlaylistItem[] = items
     .slice(0, 250)
     .map((item) => ({
@@ -50,17 +66,78 @@ export const publishPlaylist = async ({
       externalUrl: getShareableUrl(item),
     }));
 
-  const documentReference = await addDoc(
-    collection(db, "sharedPlaylists"),
+  const sharedPlaylistReference = doc(
+    db,
+    "sharedPlaylists",
+    shareId
+  );
+
+  /*
+   * A get for a document that does not exist can be rejected by
+   * security rules. Treat that as a new shared playlist.
+   */
+  const existingSnapshot = await getDoc(
+    sharedPlaylistReference
+  ).catch(() => null);
+
+  await setDoc(
+    sharedPlaylistReference,
     {
       ownerId,
+      sourcePlaylistId: playlistId,
       name: playlistName,
       items: safeItems,
       published: true,
-      createdAt: serverTimestamp(),
+
+      ...(!existingSnapshot?.exists()
+        ? {
+            createdAt: serverTimestamp(),
+          }
+        : {}),
+
       updatedAt: serverTimestamp(),
+    },
+    {
+      merge: true,
     }
   );
 
-  return documentReference.id;
+  return shareId;
+};
+
+export const isPlaylistShared = async ({
+  ownerId,
+  playlistId,
+}: {
+  ownerId: string;
+  playlistId: string;
+}) => {
+  try {
+    const shareId = getShareId(ownerId, playlistId);
+
+    const snapshot = await getDoc(
+      doc(db, "sharedPlaylists", shareId)
+    );
+
+    return (
+      snapshot.exists() &&
+      snapshot.data().published === true
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const unsharePlaylist = async ({
+  ownerId,
+  playlistId,
+}: {
+  ownerId: string;
+  playlistId: string;
+}) => {
+  const shareId = getShareId(ownerId, playlistId);
+
+  await deleteDoc(
+    doc(db, "sharedPlaylists", shareId)
+  );
 };
