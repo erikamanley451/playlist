@@ -2,8 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function ownsData(userId) {
-      return request.auth != null
+      return isSignedIn()
         && request.auth.uid == userId;
     }
 
@@ -15,6 +19,40 @@ service cloud.firestore {
         allow read, write:
           if ownsData(userId);
       }
+    }
+
+    match /sharedPlaylists/{shareId} {
+      // Anyone with the exact link can retrieve a published playlist.
+      allow get:
+        if resource.data.published == true;
+
+      // Prevent visitors from browsing every shared playlist.
+      allow list:
+        if false;
+
+      // Signed-in users can publish their own playlist snapshot.
+      allow create:
+        if isSignedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.published == true
+        && request.resource.data.name is string
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 250;
+
+      // Only the owner can update the shared snapshot.
+      allow update:
+        if isSignedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId
+          == resource.data.ownerId
+        && request.resource.data.name is string
+        && request.resource.data.items is list
+        && request.resource.data.items.size() <= 250;
+
+      // Only the owner can remove the shared snapshot.
+      allow delete:
+        if isSignedIn()
+        && resource.data.ownerId == request.auth.uid;
     }
   }
 }

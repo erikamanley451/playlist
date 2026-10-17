@@ -43,3 +43,6 @@ example
 /android
 
 .env
+
+# Firebase generated cache
+.firebase/

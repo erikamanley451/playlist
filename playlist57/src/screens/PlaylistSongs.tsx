@@ -13,6 +13,7 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -25,12 +26,16 @@ import Toast from "react-native-toast-message";
 import AudioPlayer from "../components/AudioPlayer";
 import { auth } from "../services/firebase";
 import type { ITunesMediaItem } from "../services/itunesService";
+import { publishPlaylist } from "../services/playlistSharing";
 import type { StoredPlaylist } from "../services/playlistStorage";
 import {
   loadPlaylists,
   savePlaylists,
 } from "../services/playlistStorage";
 import { styles } from "../styles/style";
+
+const SHARED_PLAYLIST_SITE =
+  process.env.EXPO_PUBLIC_SHARED_PLAYLIST_URL;
 
 const extractYouTubeVideoId = (
   value?: string | null
@@ -114,6 +119,9 @@ const PlaylistSongs = () => {
     passedPlaylist?.name ?? ""
   );
   const [renaming, setRenaming] = useState(false);
+
+  // Playlist sharing state
+  const [sharing, setSharing] = useState(false);
 
   const playableIndices = useMemo(
     () =>
@@ -276,6 +284,75 @@ const PlaylistSongs = () => {
       });
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const handleSharePlaylist = async () => {
+    if (sharing) return;
+
+    if (!uid) {
+      Toast.show({
+        type: "error",
+        text1: "Please sign in",
+        text2: "You must be signed in to share a playlist.",
+      });
+      return;
+    }
+
+    if (songs.length === 0) {
+      Toast.show({
+        type: "info",
+        text1: "Playlist is empty",
+        text2: "Add media before sharing this playlist.",
+      });
+      return;
+    }
+
+    if (!SHARED_PLAYLIST_SITE) {
+      Toast.show({
+        type: "error",
+        text1: "Sharing is not configured",
+        text2:
+          "EXPO_PUBLIC_SHARED_PLAYLIST_URL is missing.",
+      });
+      return;
+    }
+
+    try {
+      setSharing(true);
+
+      const shareId = await publishPlaylist({
+        ownerId: uid,
+        playlistName,
+        items: songs,
+      });
+
+      const baseUrl = SHARED_PLAYLIST_SITE.replace(
+        /\/+$/,
+        ""
+      );
+
+      const shareUrl =
+        `${baseUrl}/?playlist=${encodeURIComponent(
+          shareId
+        )}`;
+
+      await Share.share({
+        title: playlistName,
+        message:
+          `Check out my playlist “${playlistName}”:\n${shareUrl}`,
+        url: shareUrl,
+      });
+    } catch (error) {
+      console.error("Failed to share playlist:", error);
+
+      Toast.show({
+        type: "error",
+        text1: "Could not share playlist",
+        text2: "Please try again.",
+      });
+    } finally {
+      setSharing(false);
     }
   };
 
@@ -473,7 +550,7 @@ const PlaylistSongs = () => {
         <View style={localStyles.headerActions}>
           <TouchableOpacity
             onPress={openRenameModal}
-            style={localStyles.renameButton}
+            style={localStyles.secondaryHeaderButton}
             accessibilityRole="button"
             accessibilityLabel="Rename playlist"
           >
@@ -482,6 +559,31 @@ const PlaylistSongs = () => {
               size={20}
               color="#1DB954"
             />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={() => void handleSharePlaylist()}
+            disabled={sharing || songs.length === 0}
+            style={localStyles.secondaryHeaderButton}
+            accessibilityRole="button"
+            accessibilityLabel="Share playlist"
+          >
+            {sharing ? (
+              <ActivityIndicator
+                size="small"
+                color="#1DB954"
+              />
+            ) : (
+              <Ionicons
+                name="share-outline"
+                size={21}
+                color={
+                  songs.length === 0
+                    ? "#A7A7A7"
+                    : "#1DB954"
+                }
+              />
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -537,7 +639,9 @@ const PlaylistSongs = () => {
       ) : (
         <FlatList
           data={songs}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) =>
+            `${item.mediaType}:${item.id}`
+          }
           contentContainerStyle={
             activeItem
               ? {
@@ -711,18 +815,18 @@ const PlaylistSongs = () => {
 const localStyles = StyleSheet.create({
   headerTitle: {
     flex: 1,
-    marginRight: 4,
+    marginRight: 2,
   },
   headerActions: {
     marginLeft: "auto",
-    marginRight: 16,
+    marginRight: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    gap: 4,
   },
-  renameButton: {
+  secondaryHeaderButton: {
     width: 28,
-    height: 32,
+    height: 36,
     alignItems: "center",
     justifyContent: "center",
   },
