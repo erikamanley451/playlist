@@ -9,6 +9,7 @@ Users can also publish a playlist through Firebase Hosting and share a public br
 
 This project began as a class project and was expanded afterward with stronger authentication, Firestore synchronization, richer media discovery, mixed-media playback, public playlist sharing, and a more polished mobile experience.
 
+
 ## How It Works
 
 1. A user creates an account with an email address and password.
@@ -22,6 +23,7 @@ This project began as a class project and was expanded afterward with stronger a
 9. The recipient can open the shared playlist in a browser without installing the app or creating an account.
 10. A shared playlist keeps a stable link and is updated when its contents change.
 11. The owner can unshare the playlist, making its public link unavailable while preserving the private playlist.
+
 
 ## Features
 
@@ -71,6 +73,7 @@ This project began as a class project and was expanded afterward with stronger a
 - Unshare option that disables the public link without deleting the private playlist
 - Public-by-link Firestore access without exposing all shared playlists through collection queries
 
+
 ## Technology Stack
 
 | Area | Technology | Purpose |
@@ -88,9 +91,10 @@ This project began as a class project and was expanded afterward with stronger a
 | UI | Expo Vector Icons, React Native components | Consistent controls and mobile interface |
 | Notifications | `react-native-toast-message` | Success, validation, and error feedback |
 
+
 ## Architecture
 
-![PlayList architecture](playlist57/docs/architecture.png)
+![PlayList architecture](playlist57/docs/playlist_architecture.png)
 
 The Expo application coordinates several external services:
 
@@ -117,6 +121,7 @@ sharedPlaylists/{shareId}
 
 Public visitors can retrieve a published playlist only when they possess its exact link. Firestore rules prevent visitors from listing or browsing the entire `sharedPlaylists` collection.
 
+
 ## Sharing and Privacy Model
 
 Shared playlists are public by link.
@@ -134,6 +139,7 @@ It does not include passwords, authentication tokens, email addresses, private p
 
 Sharing the same playlist again updates its existing shared document instead of creating another link. Unsharing deletes the public snapshot while leaving the user's private Firestore playlist unchanged.
 
+
 ## Media Attribution and Limitations
 
 PlayList is a media-discovery and playlist-management project, not a licensed full-catalog streaming service.
@@ -146,6 +152,7 @@ PlayList is a media-discovery and playlist-management project, not a licensed fu
 - Upstream APIs can occasionally return rate-limit errors, timeouts, or temporary service errors.
 - The application uses cached results and fallback searches where practical.
 - Source attribution and external links are included for supported providers.
+
 
 ## Learning Outcomes
 
@@ -167,9 +174,11 @@ This project demonstrates:
 - Iterating on usability issues discovered through simulator testing
 - Balancing technical capability with API, copyright, and platform limitations
 
+
 ## 🎥 Demo
 
 [Watch the PlayList Demo](https://drive.google.com/file/d/1USERF_wqeqzHbtu1JTp8KCkwkN9frNSf/view?usp=sharing)
+
 
 ## Running the Project
 
@@ -370,6 +379,7 @@ If Metro appears to be using stale code, restart it with:
 ```bash
 npx expo start --clear
 ```
+
 
 ## Project Status
 
